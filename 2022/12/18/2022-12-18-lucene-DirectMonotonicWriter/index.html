@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+    <meta charset="utf8" />
+    <meta name="viewport" content="initial-scale=1.0, width=device-width" />
+    <title>
+      
+        lucene 编码技术 - DirectMonotonicWriter | Debuger
+      
+    </title>
+    <meta name="description" content="description"/>
+    <meta name="keywords" content="keywords"/>
+    
+      <link rel="apple-touch-icon"
+            sizes="180x180"
+            href="/images/apple-touch-icon.png"/>
+    
+    
+      <link rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/images/favicon-32x32.png"/>
+    
+    
+      <link rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/images/favicon-16x16.png"/>
+    
+    
+      <link rel="mask-icon"
+            href="/images/logo.svg"
+            color=""/>
+    
+    
+    <link rel="stylesheet" type="text/css" href="/css/layout.css"/>
+    
+    
+  <link rel="stylesheet" type="text/css" href="/css/post.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css" />
+
+  <meta name="generator" content="Hexo 6.3.0"></head>
+  <body>
+    <div class="head">
+      <div class="nav">
+        <a href="/" class="nav-logo">
+          <img alt="logo" height="60px" width="60px" src="/images/logo.svg" />
+        </a>
+        <input id="navBtn" type="checkbox"/>
+        <div class="nav-menu">
+          
+            
+              <a class="nav-menu-item" href="/computer">计算机技术</a>
+            
+              <a class="nav-menu-item" href="/science">数理科学</a>
+            
+              <a class="nav-menu-item" href="/life">生活</a>
+            
+          
+        </div>
+        <label class="nav-btn" for="navBtn"></label>
+      </div>
+    </div>
+    <div class="body">
+      
+  <article class="post-content">
+    <div class="post-inner">
+      <div class="post-content__head">
+        <div class="post-title">lucene 编码技术 - DirectMonotonicWriter</div>
+        <div class="post-info">
+          
+  
+    <a href="/tags/lucene/" class="post-tag">#lucene</a>
+  
+
+
+          <span class="post-date">2022-12-18</span>
+        </div>
+      </div>
+      <div class="post-content__body">
+        
+          <div class="post-gallery">
+            
+          </div>
+        
+        <blockquote>
+<p>从名称可以看出，DirectMonotonicWriter 这个类主要是针对单调递增或者递减（即有序）数据集的编码。本文将结合源码分析其编码原理。</p>
+</blockquote>
+<h3 id="无序数组压缩"><a href="#无序数组压缩" class="headerlink" title="无序数组压缩"></a>无序数组压缩</h3><p>在 Lucene 中，有很多地方都需要存储无序整型序列，如数值型 DocValues 的值、ords 等等。对于这种类型的序列值如何才能做到较好的压缩编码呢？最简单的做法就是减去序列中的最小值，缩小值域范围，比如下面一组值：[35, 40, 30, 45]，值域范围[30, 45]，采用 DirectWriter 编码，bitPerValue 为 8 ；减去最小值后为 [5, 10, 0, 15]，值域为[0, 15]，bitPerValue 为 4，因此相比原始数据可以减少一半的存储开销。</p>
+<p>那还能不能取得更进一步的压缩率呢？答案是有的。我们观察上面差值后的数据集，发现它们都能被 5 整除，即最大公约数（gcd）为 5，因此可以再将上述数据集中的数除以 5 得到 [1, 2, 0, 3]。很明显，数据集的范围降低了数倍，此时 bitPerValue 为 2，相比原始数据，可以有 4 倍的压缩比。</p>
+<p>综上，对于无序数据集的压缩方式可以命名为差值&amp;最大公约数压缩。bitPerValue 的计算方式为 <em>(max -min)&#x2F;gcd</em>。</p>
+<h3 id="有序数组压缩"><a href="#有序数组压缩" class="headerlink" title="有序数组压缩"></a>有序数组压缩</h3><p>上一节讲了无序数据集编码原理，那么对于有序数据集是否可以采用同样的编码方式来达到最佳的编码效果呢？假如有如下数据集 [0,  2, 5, 7, 8]，要达到压缩的效果就是要缩小数据集的值域，对于有序数组，很容易想到可以直接求相邻元数的差值得到 [0, 2, 3, 2, 1]，完了以后再将该数据集按照无序数组的压缩方式压缩即可。</p>
+<p>假如有数组 [0, 100, 300, 700, 801]，它们的差值为 [0, 100, 200, 400, 101]，最大差值为 400 依旧较大，bitPerValue 得取 12，范围压缩不够明显。那有没有更好的办法将数组的值域变得更小呢？这就是 DirectMonotonicWriter 需要解决的问题，我们结合源码来看看 DirectMonotonicWriter 是怎么做的。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">flush</span><span class="params">()</span> <span class="keyword">throws</span> IOException &#123;</span><br><span class="line">  <span class="keyword">assert</span> bufferSize != <span class="number">0</span>;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// 求 avgInc</span></span><br><span class="line">  <span class="keyword">final</span> <span class="type">float</span> <span class="variable">avgInc</span> <span class="operator">=</span></span><br><span class="line">      (<span class="type">float</span>) ((<span class="type">double</span>) (buffer[bufferSize - <span class="number">1</span>] - buffer[<span class="number">0</span>]) / Math.max(<span class="number">1</span>, bufferSize - <span class="number">1</span>));</span><br><span class="line">  <span class="comment">// 按位置减去 i*avgInc</span></span><br><span class="line">  <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; bufferSize; ++i) &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">long</span> <span class="variable">expected</span> <span class="operator">=</span> (<span class="type">long</span>) (avgInc * (<span class="type">long</span>) i);</span><br><span class="line">    buffer[i] -= expected;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="type">long</span> <span class="variable">min</span> <span class="operator">=</span> buffer[<span class="number">0</span>];</span><br><span class="line">  <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">1</span>; i &lt; bufferSize; ++i) &#123;</span><br><span class="line">    min = Math.min(buffer[i], min);</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="type">long</span> <span class="variable">maxDelta</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">  <span class="comment">// 减去最小值</span></span><br><span class="line">  <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; bufferSize; ++i) &#123;</span><br><span class="line">    buffer[i] -= min;</span><br><span class="line">    <span class="comment">// use | will change nothing when it comes to computing required bits</span></span><br><span class="line">    <span class="comment">// but has the benefit of working fine with negative values too</span></span><br><span class="line">    <span class="comment">// (in case of overflow)</span></span><br><span class="line">    maxDelta |= buffer[i];</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  meta.writeLong(min);</span><br><span class="line">  meta.writeInt(Float.floatToIntBits(avgInc));</span><br><span class="line">  meta.writeLong(data.getFilePointer() - baseDataPointer);</span><br><span class="line">  <span class="keyword">if</span> (maxDelta == <span class="number">0</span>) &#123;</span><br><span class="line">    meta.writeByte((<span class="type">byte</span>) <span class="number">0</span>);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">final</span> <span class="type">int</span> <span class="variable">bitsRequired</span> <span class="operator">=</span> DirectWriter.unsignedBitsRequired(maxDelta);</span><br><span class="line">    <span class="type">DirectWriter</span> <span class="variable">writer</span> <span class="operator">=</span> DirectWriter.getInstance(data, bufferSize, bitsRequired);</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; bufferSize; ++i) &#123;</span><br><span class="line">      writer.add(buffer[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    writer.finish();</span><br><span class="line">    meta.writeByte((<span class="type">byte</span>) bitsRequired);</span><br><span class="line">  &#125;</span><br><span class="line">  bufferSize = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们主要关注前面几步，第一步算出数组的平均增长值 avgInc，第二步根据元素所处位置减去 i<em>avgInc。还是以上面的数组 [0, 100, 300, 700, 801] 为例，算出 <em>avgInc &#x3D; (801-0)&#x2F;(5-1) &#x3D; 200</em>，各元数减去 i</em>avgInc 后得到差值数组 [0, -100, -100, 100, 1]；第三步差值数组减去最小值（当前最小值 -100）得到数组 [100,  0, 0, 200, 101]，最大差值（maxDelta）为 200，bitsRequired 为 8。</p>
+<p>DirectMonotonicWriter 尽可能让处理后的数组最大元数更小，从而减小编码所需位数。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>本文结合例子讲解了无序数组和有序数组的编码原理 ，并着重通过源码讲解了 DirectMonotonicWriter 如何对有序数组进行编码。总的来说，编码方式很容易理解，在 lucene 中多处地方会用到本文讲的编码算法，后面涉及相关内容时会更容易理解。</p>
+
+      </div>
+    </div>
+  </article>
+  <div class="post__foot">
+    
+    <div class="post-nav">
+  
+    <a class="post-nav-item-left" href="/2022/12/31/SortedSetDocValues%20%E6%BA%90%E7%A0%81/">
+      <div class="text-align">
+        <svg t="1670570876164"
+             class="icon"
+             viewBox="0 0 1024 1024"
+             width="16"
+             height="16">
+          <path d="M384 512L731.733333 202.666667c17.066667-14.933333 19.2-42.666667 4.266667-59.733334-14.933333-17.066667-42.666667-19.2-59.733333-4.266666l-384 341.333333c-10.666667 8.533333-14.933333 19.2-14.933334 32s4.266667 23.466667 14.933334 32l384 341.333333c8.533333 6.4 19.2 10.666667 27.733333 10.666667 12.8 0 23.466667-4.266667 32-14.933333 14.933333-17.066667 14.933333-44.8-4.266667-59.733334L384 512z" p-id="14596"/>
+        </svg>
+        <span class="text-small">上一篇</span>
+      </div>
+      <div>未命名</div>
+    </a>
+  
+  <div class="vhr"></div>
+  
+    <a class="post-nav-item-right" href="/2022/12/04/2022-12-04-lucene-DirectWriter/">
+      <div class="text-align">
+        <span class="text-small">下一篇</span>
+        <svg t="1670570876164"
+             class="icon"
+             viewBox="0 0 1024 1024"
+             transform="scale(-1,-1)"
+             width="16"
+             height="16">
+          <path d="M384 512L731.733333 202.666667c17.066667-14.933333 19.2-42.666667 4.266667-59.733334-14.933333-17.066667-42.666667-19.2-59.733333-4.266666l-384 341.333333c-10.666667 8.533333-14.933333 19.2-14.933334 32s4.266667 23.466667 14.933334 32l384 341.333333c8.533333 6.4 19.2 10.666667 27.733333 10.666667 12.8 0 23.466667-4.266667 32-14.933333 14.933333-17.066667 14.933333-44.8-4.266667-59.733334L384 512z" p-id="14596"/>
+        </svg>
+      </div>
+      lucene 编码技术 - DirectWriter
+    </a>
+  
+</div>
+
+    
+    <div id="gitalk-container"></div>
+  </div>
+
+    </div>
+    <div class="foot">
+      <div class="foot-inner">
+        <div class="foot__head">
+          
+            <div class="foot-line">
+              <div class="matts">海</div><div class="matts">内</div><div class="matts">存</div><div class="matts">知</div><div class="matts">己</div>
+            </div>
+          
+            <div class="foot-line">
+              <div class="matts">天</div><div class="matts">涯</div><div class="matts">若</div><div class="matts">比</div><div class="matts">邻</div>
+            </div>
+          
+        </div>
+        <div class="foot__body">
+          
+            <div class="foot-item">
+              <div class="foot-item__head">朋友</div>
+              <div class="foot-item__body">
+                
+                  <div class="text">
+                    <img alt="link"
+                         height="20px"
+                         width="20px"
+                         src="/images/icon/icon-link.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://github.com/hooozen/hexo-theme-tranquility">Theme Tranquility</a>
+                  </div>
+                
+                <div class="text">
+                  <img alt="link"
+                       height="20px"
+                       width="20px"
+                       src="/images/icon/icon-link+.svg"/>
+                  <a class="foot-link"
+                     href="mailto:xzy.debuger@gmail.com?subject=%E7%94%B3%E8%AF%B7%20Hozen.site%20%E7%9A%84%E5%8F%8B%E9%93%BE%E4%BD%8D%E7%BD%AE">
+                  申请友链</a>
+                </div>
+              </div>
+            </div>
+          
+          
+            <div class="foot-item">
+              <div class="foot-item__head">账号</div>
+              <div class="foot-item__body">
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-github.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://github.com/zhenyuxie">github</a>
+                  </div>
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-wx.svg"/>
+                    <a class="foot-link" href="xxx">微信公众号</a>
+                  </div>
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-zh.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://www.zhihu.com/people/xzy-51-38">知乎</a>
+                  </div>
+                
+              </div>
+            </div>
+          
+          <div class="foot-item">
+            <div class="foot-item__head">联系</div>
+            <div class="foot-item__body">
+              <div class="text">
+                <img alt="link"
+                     height="20px"
+                     width="20px"
+                     src="/images/icon/icon-email.svg"/>
+                <a class="foot-link" href="mailto:xzy.debuger@gmail.com">xzy.debuger@gmail.com</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="copyright">
+          <a href="https://zhenyuxie.github.io">Debuger</a> &nbsp;|&nbsp;由&nbsp;<a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>&nbsp;及&nbsp;
+          <svg width="20" height="20" viewBox="0 0 725 725">
+            <path fill-rule="evenodd" fill="rgb(221, 221, 221)"
+            d="M145.870,236.632 L396.955,103.578 L431.292,419.44 L156.600,522.53 L145.870,236.632 Z" />
+            <path fill-rule="evenodd" fill="rgb(159, 159, 159)"
+            d="M396.955,103.578 L564.345,234.486 L611.558,513.469 L431.292,419.44 L396.955,103.578 Z" />
+            <path fill-rule="evenodd" fill="rgb(0, 0, 0)"
+            d="M431.292,419.44 L611.558,513.469 L358.327,595.18 L156.600,522.53 L431.292,419.44 Z" />
+          </svg>
+          <a target="_blank" rel="noopener" href="https://github.com/hooozen/hexo-theme-tranquility">致远</a>&nbsp;驱动
+        </div>
+      </div>
+    </div>
+    
+    
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script type="text/javascript">
+  const param = JSON.parse('{"enable":true,"owner":"zhenyuxie","admin":["zhenyuxie"],"repo":"zhenyuxie/zhenyuxie.github.io","clientID":"cd5afced7353e1fbf7a6","clientSecret":"774ba7bb3da4d779a15e76442c2474e39ac01031","distractionFreeMode":false,"proxy":"https://cors-anywhere.azm.workers.dev/https://github.com/login/oauth/access_token","language":"zh-CN"}')
+  param.id = location.pathname
+  const gitalk = new Gitalk(param)
+  gitalk.render('gitalk-container')
+</script>
+
+
+  </body>
+</html>

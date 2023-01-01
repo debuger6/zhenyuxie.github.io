@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+    <meta charset="utf8" />
+    <meta name="viewport" content="initial-scale=1.0, width=device-width" />
+    <title>
+      
+        Pebble 源码剖析-写入流程 | Debuger
+      
+    </title>
+    <meta name="description" content="description"/>
+    <meta name="keywords" content="keywords"/>
+    
+      <link rel="apple-touch-icon"
+            sizes="180x180"
+            href="/images/apple-touch-icon.png"/>
+    
+    
+      <link rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/images/favicon-32x32.png"/>
+    
+    
+      <link rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/images/favicon-16x16.png"/>
+    
+    
+      <link rel="mask-icon"
+            href="/images/logo.svg"
+            color=""/>
+    
+    
+    <link rel="stylesheet" type="text/css" href="/css/layout.css"/>
+    
+    
+  <link rel="stylesheet" type="text/css" href="/css/post.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css" />
+
+  <meta name="generator" content="Hexo 6.3.0"></head>
+  <body>
+    <div class="head">
+      <div class="nav">
+        <a href="/" class="nav-logo">
+          <img alt="logo" height="60px" width="60px" src="/images/logo.svg" />
+        </a>
+        <input id="navBtn" type="checkbox"/>
+        <div class="nav-menu">
+          
+            
+              <a class="nav-menu-item" href="/computer">计算机技术</a>
+            
+              <a class="nav-menu-item" href="/science">数理科学</a>
+            
+              <a class="nav-menu-item" href="/life">生活</a>
+            
+          
+        </div>
+        <label class="nav-btn" for="navBtn"></label>
+      </div>
+    </div>
+    <div class="body">
+      
+  <article class="post-content">
+    <div class="post-inner">
+      <div class="post-content__head">
+        <div class="post-title">Pebble 源码剖析-写入流程</div>
+        <div class="post-info">
+          
+  
+    <a href="/tags/Pebble/" class="post-tag">#Pebble</a>
+  
+
+
+          <span class="post-date">2022-01-24</span>
+        </div>
+      </div>
+      <div class="post-content__body">
+        
+          <div class="post-gallery">
+            
+          </div>
+        
+        <p>本章会结合 Pebble 源码来剖析整个写入流程，并会深入分析整个写入路径上涉及的一些技术细节。这里说明，文章只会贴一些关键代码和代码行数较少的函数或者方法，尽量避免太多代码内容影响阅读感受。</p>
+<h3 id="预备知识"><a href="#预备知识" class="headerlink" title="预备知识"></a>预备知识</h3><p>为了便于大家理解，首先会科普一些基础概念，有基础的同学可以直接跳过。为了更直观的理解，我们先将<a href="https://zhenyuxie.github.io/2022/01/20/pebble-intr/">上一章</a>的图搬过来。</p>
+<p><img src="/images/pebble/LSM.png" alt="LSM"></p>
+<h4 id="WAL"><a href="#WAL" class="headerlink" title="WAL"></a>WAL</h4><p>Wal（Write ahead of log）即预写日志，其是一种日志结构，每条日志包含了数据的原始内容并以追加写的方式写入磁盘文件，在数据写入内存前需将原始数据写入到 Wal。Wal 的写入模式可以分为 Sync（同步）和 Async（异步），如果为同步写则前台需阻塞等待日志落盘，异步写只需将日志记录写到内存缓存后便可返回。因此，同步模式可靠性更高但性能偏低，异步模式性能很好但有丢数据的风险，需根据具体场景合理选择使用哪种模式。Wal 的具体格式会在下面源码分析阶段详细介绍。</p>
+<h4 id="Memtable"><a href="#Memtable" class="headerlink" title="Memtable"></a>Memtable</h4><p>Memtable 是数据（KV Pairs）在内存中的载体，业务数据写入 Pebble 后，首先写 Wal，然后会写入到 Memtable，数据在 Memtable 中会按序存储。Memtable 有两种形式，一种是 Mutable Memtable（可变），另外一种是 Immutable Memtable（不可变），顾名思义，前者可以同时支持读写，而后者只能读不能写。Memtable（默认指是 Mutable）一般会有大小限制，写满后会转变为 Immutable，Immutable 会由专门后台线程按照某种策略刷到磁盘，同时释放内存并清理对应的 Wal。</p>
+<h4 id="SSTable"><a href="#SSTable" class="headerlink" title="SSTable"></a>SSTable</h4><p>SSTable 即 Sorted String Table 简称为 SST，由内存中的 Memtable 刷盘而成，是一种有序的、不修改的磁盘文件格式，其中 Key 和 Value 都可以是任意的 byte 序列。和 RocksDB&#x2F;LevelDB 一样，SST 在 Pebble 中也是按层组织，数据首先刷入到第 0 层，在到达一定数量后后被后台线程 Merge 并 Compact 到下层。每层的数据量按倍数增长，越往下层数据量越大，同时数据也越老。</p>
+<p>由于本章只分析写入流程，因此我们先科普上述三个比较重要的概念，其他知识后面涉及再详细展开。</p>
+<h3 id="源码分析"><a href="#源码分析" class="headerlink" title="源码分析"></a>源码分析</h3><p>有了上面的预备知识，本节可以开始对源码进行剖析了。首先贴上官方的 Demo 程序：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">package</span> main</span><br><span class="line"></span><br><span class="line"><span class="keyword">import</span> (</span><br><span class="line">	<span class="string">&quot;fmt&quot;</span></span><br><span class="line">	<span class="string">&quot;log&quot;</span></span><br><span class="line"></span><br><span class="line">	<span class="string">&quot;github.com/cockroachdb/pebble&quot;</span></span><br><span class="line">)</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">main</span><span class="params">()</span></span> &#123;</span><br><span class="line">	db, err := pebble.Open(<span class="string">&quot;demo&quot;</span>, &amp;pebble.Options&#123;&#125;)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line">	key := []<span class="type">byte</span>(<span class="string">&quot;hello&quot;</span>)</span><br><span class="line">	<span class="keyword">if</span> err := db.Set(key, []<span class="type">byte</span>(<span class="string">&quot;world&quot;</span>), pebble.Sync); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line">	value, closer, err := db.Get(key)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line">	fmt.Printf(<span class="string">&quot;%s %s\n&quot;</span>, key, value)</span><br><span class="line">	<span class="keyword">if</span> err := closer.Close(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">if</span> err := db.Close(); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		log.Fatal(err)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到 Pebble 的使用还是比较简单，首先根据配置项打开一个 DB，然后便可以向该 DB 进行读写操作了。这里顺便介绍配置项 Options 的一些常用且重要的选项，便于后续理解。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line">BytesPerSync <span class="comment">// 控制 sstable 按照该值平滑刷盘，防止系统一次性刷大量脏页导致写入延时抖动，默认值是 512KB</span></span><br><span class="line">WALBytesPerSync <span class="comment">// 控制 wal 按照该值平滑刷盘，不过 Pebble 认为该值一般情况下没必要设置，因为大部分场景 wal 是 sync 写入的，默认值是 0</span></span><br><span class="line">DisableWAL <span class="comment">// 是否关闭 Wal，该参数为 true 时，不写 Wal，数据可靠性最低，默认为 false</span></span><br><span class="line">L0CompactionThreshold <span class="comment">// level 0 读放大 compaction 阈值，到达阈值后将触发 L0 compaction，默认值是 4</span></span><br><span class="line">L0StopWritesThreshold <span class="comment">// level 0 的读放大停写阈值，达到阈值后将阻塞写，默认值是 12</span></span><br><span class="line">LBaseMaxBytes <span class="comment">// level 0 compaction 至的 level 最大容量，其他层的最大容量会根据该值动态计算，默认是 64 MB</span></span><br><span class="line">MemTableSize  <span class="comment">// memtable 的最大值，memtable 的大小从  256KB 开始分配，每次新建则翻倍直到达到该阈值，默认是 4MB</span></span><br><span class="line">MemTableStopWritesThreshold <span class="comment">// 所有 memtable 总大小达到  MemTableStopWritesThreshold*MemTableSize 会阻塞写，默认值是 2</span></span><br><span class="line">MaxConcurrentCompactions <span class="comment">// 最大 compaction 并发数，默认值是 1，具体用处等到后面将 compaction 时再详细展开</span></span><br><span class="line">ReadOnly <span class="comment">// DB 以只读方式打开，后台的 compaction 和 flush 会关闭</span></span><br></pre></td></tr></table></figure>
+
+<p>了解上述基本配置项后，现在可以正式进入写入流程。这里展示不分析 Open 流程，等介绍完前几章内容再倒过来分析会更容易理解。我们直接从 DB.Set 开始。</p>
+<h4 id="DB-Set"><a href="#DB-Set" class="headerlink" title="DB.Set"></a>DB.Set</h4><p>数据的写入方式有两种，一种是单 KV 写入，另一种是 Batch 批量写入。单 KV 写入也会转为 Batch 方式，因此我们以 DB.Set 方法为入口来看看里面的实现逻辑。</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(d *DB)</span></span> Set(key, value []<span class="type">byte</span>, opts *WriteOptions) <span class="type">error</span> &#123;</span><br><span class="line">	b := newBatch(d)</span><br><span class="line">	_ = b.Set(key, value, opts)</span><br><span class="line">	<span class="keyword">if</span> err := d.Apply(b, opts); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="comment">// Only release the batch on success.</span></span><br><span class="line">	b.release()</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，Set 方法内部会新建一个 Batch，并将 KV 塞入到 Batch，然后执行 DB 的 Apply 方法，如果成功执行则调用 release 释放 Batch。这里讲到 Batch，那我们来看看 Batch 的格式到底长啥样。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">|-        header       -|-  body -|</span><br><span class="line">+-----------+-----------+----...--+</span><br><span class="line">|SeqNum (8B)| Count (4B)| Entries |</span><br><span class="line">+-----------+-----------+---------+</span><br></pre></td></tr></table></figure>
+
+<p>Batch 内部数据由 header 和 body 组成，header 包含 8 字节 SeqNum 和 4 字节 Count，SeqNum 表示 batch 的序列号，Count 表示 Entry 个数。body 由多个 Entry 构成。每个 Entry 格式如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">+----------+--------+-----+----------+-------+</span><br><span class="line">|Kind (1B) | KeyLen | Key | ValueLen | Value |</span><br><span class="line">+----------+--------+-----+----------+-------+</span><br></pre></td></tr></table></figure>
+
+<p>Kind 表示 Entry 的类型，如 SET、DELETE、MERGE 等，这里写入的类型为 SET。KeyLen 表示 Key 的大小，为 VInt 类型，最大 4 字节，Key 即为 KeyLen 字节序列，同理，ValueLen 表示 Value 大小，为 VInt 类型，最大 4 字节，Value 为 ValueLen 字节序列。  </p>
+<p>了解完 Batch 格式后，我们继续往下走，这里直接进入到 DB 的 Apply 方法。</p>
+<h4 id="DB-Apply"><a href="#DB-Apply" class="headerlink" title="DB.Apply"></a>DB.Apply</h4><p>Apply 方法里面会做一些检验工作，随后将 Batch 提交写入，这里贴部分关键代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> <span class="type">int</span>(batch.memTableSize) &gt;= d.largeBatchThreshold &#123;</span><br><span class="line">	batch.flushable = newFlushableBatch(batch, d.opts.Comparer)</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">if</span> err := d.commit.Commit(batch, sync); err != <span class="literal">nil</span> &#123;</span><br><span class="line">	<span class="comment">// There isn&#x27;t much we can do on an error here. The commit pipeline will be</span></span><br><span class="line">	<span class="comment">// horked at this point.</span></span><br><span class="line">	d.opts.Logger.Fatalf(<span class="string">&quot;%v&quot;</span>, err)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先会判断 batch 的大小，如果超过最大 large batch 的阈值，则该 batch 被视为 large batch，需要特殊处理。为了避免本章内容过于繁杂，本章后面所有涉及 large batch 的逻辑都将省略，下章会单独对 large batch 进行讲解。下面我们直接进入 Commit 方法。</p>
+<h4 id="commitPipeline-Commit"><a href="#commitPipeline-Commit" class="headerlink" title="commitPipeline.Commit"></a>commitPipeline.Commit</h4><p>笔者认为 Commit 方法是写入流程中非常核心的方法，里面体现了 Pebble 高性能设计之道。我们先来看看代码（该方法不算特别长，全部奉上）：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *commitPipeline)</span></span> Commit(b *Batch, syncWAL <span class="type">bool</span>) <span class="type">error</span> &#123;</span><br><span class="line">	<span class="keyword">if</span> b.Empty() &#123; <span class="keyword">return</span> <span class="literal">nil</span>&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// 并发控制，sem 是缓冲 channel，因此可以并发 commit</span></span><br><span class="line">	p.sem &lt;- <span class="keyword">struct</span>&#123;&#125;&#123;&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// prepare 主要做的事情：1. 准备好可用的 memtable 2. 写 wal(可以是异步的，将 wal 塞入 queue, 再异步写，提高并发性能)</span></span><br><span class="line">	<span class="comment">// prepare 中会对 pipeline 加锁，因此整个过程是串行执行，不过该函数通常很快</span></span><br><span class="line">	mem, err := p.prepare(b, syncWAL)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		b.db = <span class="literal">nil</span> <span class="comment">// prevent batch reuse on error</span></span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// 将 batch 写入 memtable，这里可以是并发执行，该流程是 pipeline 中最耗的</span></span><br><span class="line">	<span class="keyword">if</span> err := p.env.apply(b, mem); err != <span class="literal">nil</span> &#123;</span><br><span class="line">		b.db = <span class="literal">nil</span> <span class="comment">// prevent batch reuse on error</span></span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	<span class="comment">// Publish the batch sequence number.</span></span><br><span class="line">	p.publish(b)</span><br><span class="line"></span><br><span class="line">	&lt;-p.sem</span><br><span class="line"></span><br><span class="line">	<span class="keyword">if</span> b.commitErr != <span class="literal">nil</span> &#123;</span><br><span class="line">		b.db = <span class="literal">nil</span> <span class="comment">// prevent batch reuse on error</span></span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> b.commitErr</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>Commit 方法包含三个核心步骤，首先是通过 <strong>prepare</strong> 方法准备好可用的 Memtable，并将数据异步写入 Wal，整个 prepare 方法会加锁，因此该方法只能串行执行，但是该方法执行较快，时间复杂度为 <em>O(1)</em> ；然后调用 <strong>apply</strong> 方法将 batch 写入 Memtable，由于 Memtable 采用无锁 Skiplist 实现，可以并发执行，但是该流程相对更耗，时间复杂度为 *nO(logm)*（n 为 Batch 记录条数，m 为 Memtable 中 key 数目）；最后调用 <strong>publish</strong> 方法将 batch 的 SeqNum 发布出去使其可见，换句话说，就是让提交的数据可读，该函数可并发执行，如果 Wal 为异步落盘，该方法会比较快。在多线程场景下，这三个阶段会被组织成 Pipleline 方式处理，我们先根据下图来直观感受下 Pipeline 的执行过程：</p>
+<p><img src="/images/pebble/pipeline.png" alt="pipeline"></p>
+<p>如上图，假设有多个线程并发执行 Commit，只有 prepare 阶段间多个线程是串行执行，其他阶段是可以并发执行的，这种思想和处理器指令流水线如出一辙。这种模型可以充分发挥现代 CPU 多核的优势。我们可以通过一个公式来计算下每个线程的平均耗时。假设每个线程的 prepare 阶段耗时为 <em>x</em>，apply 耗时为 <em>y</em>，publish 耗时为 <em>z</em>。则从第 1 个线程到第 n 个线程执行完毕，时间轴上总耗时为 <em>n</em> * <em>x+y+z</em>，每个线程的平均耗时为 <em>(n</em> * <em>x+y+z)&#x2F;n</em> &#x3D; <em>x+(y+z)&#x2F;n</em>。可以看出在理想情况下，并发量无穷大时，线程的平均执行时间趋近于 <em>x</em>，当然实际上线程数过多并不一定更优，因为线程切换也是有开销的，总的来说，在合理范围内，并发量越大系统吞吐也更大。</p>
+<p>到这里，Pipeline 的设计思想就分析完成了。接下来我们再展开讲讲每个阶段的执行逻辑。</p>
+<h4 id="commitPipeline-prepare"><a href="#commitPipeline-prepare" class="headerlink" title="commitPipeline.prepare"></a>commitPipeline.prepare</h4><p>prepare 方法主要是准备 batch 写入的 Memtable 及异步写 wal。主要代码如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">count := <span class="number">1</span></span><br><span class="line"><span class="keyword">if</span> syncWAL &#123;</span><br><span class="line">	count++</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// commit 为 sync.Group，用于等待 batch publish，如果 wal 为同步模式，也会等待 wal 刷盘</span></span><br><span class="line">b.commit.Add(count)</span><br><span class="line"></span><br><span class="line"> p.mu.Lock()</span><br><span class="line"><span class="comment">// 将 batch 如队列，保证并发场景下 batch 的顺序</span></span><br><span class="line">p.pending.enqueue(b)</span><br><span class="line"><span class="comment">// 设置 batch 的序列号，batch 的 n 条记录序列号递增</span></span><br><span class="line"> b.setSeqNum(atomic.AddUint64(p.env.logSeqNum, n) - n)</span><br><span class="line"></span><br><span class="line"><span class="comment">// 将数据写入 wal</span></span><br><span class="line">mem, err := p.env.write(b, syncWG, syncErr)</span><br><span class="line"></span><br><span class="line">p.mu.Unlock()</span><br></pre></td></tr></table></figure>
+
+<p>首先会根据 Wal 是否为同步模式来决定 commit 的等待计数，初始计数为 1，是因为必须等待 batch 的发布（后面 publish 方法中会看到），如果 Wal 为同步模式，还必须等待 Wal 刷盘完成。注意，这里只是计数，commit.Wait 会在 publish 中调用。</p>
+<p>然后加锁进入临界区，在临界区内，先将 batch 入队列；然后给 batch 分配递增的序列号，由于外面有上锁，因此在并发环境下，batch 在队列中的顺序和 SeqNum 的顺序关系一致，即先入队列的 SeqNum 越小；最后将数据写入 wal。这里的 write 方法其实是 DB.commitWrite，我们来看下写入的逻辑。</p>
+<h5 id="DB-commitWrite"><a href="#DB-commitWrite" class="headerlink" title="DB.commitWrite"></a>DB.commitWrite</h5><p>这个方法里面会执行两个核心的操作：1. 准备 batch 的 Memtable；2. 将数据写入到日志的内存结构中。贴下关键代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 获取 batch 的底层字节数组数据</span></span><br><span class="line"> repr := b.Repr()</span><br><span class="line"></span><br><span class="line"><span class="comment">// 上锁，操作 memtable</span></span><br><span class="line">d.mu.Lock()</span><br><span class="line">err := d.makeRoomForWrite(b)</span><br><span class="line">mem := d.mu.mem.mutable</span><br><span class="line">d.mu.Unlock()</span><br><span class="line"></span><br><span class="line"> <span class="comment">// 如果 wal 未开启，直接返回 memtable</span></span><br><span class="line"><span class="keyword">if</span> d.opts.DisableWAL &#123;</span><br><span class="line">	<span class="keyword">return</span> mem, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 将数据写入 wal 内存结构</span></span><br><span class="line"><span class="keyword">if</span> b.flushable == <span class="literal">nil</span> &#123;</span><br><span class="line">	size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="built_in">panic</span>(err)</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>makeRoomForWrite  主要是为了确保当前 Memtable 是否足以容纳 batch 的数据，如果当前 Memtable 容量已经满了，会将其转变为 Immutable 并重新创建 Memtable。由于 makeRoomForWrite 会对 memtable 和 log 进行操作，因此这里会加锁，该方法执行逻辑比较复杂，这里不详细展开，我们放到下章和 large batch 一起讲解。</p>
+<p>如果开启了 Wal，会将数据写入日志内存结构。这里我们来看看日志的格式：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">|-                      header                    -|-  body   -|</span><br><span class="line">+---------+-----------+-----------+----------------+--- ... ---+</span><br><span class="line">|CRC (4B) | Size (2B) | Type (1B) | Log number (4B)| Payload   |</span><br><span class="line">+---------+-----------+-----------+----------------+--- ... ---+</span><br></pre></td></tr></table></figure>
+
+<p>日志由 header 和 body 构成。header 包含 4 字节 CRC 校验码，2 字节 Size 表示 body 的大小，1 字节 Type 表示日志处在 block 中的位置，后面详细解释， 4 字节 LogNum 表示日志文件的编号，可用于日志复用，这个后面章节再详解；payload 表示日志的内容，在这里即为 Batch 的字节数组数据。</p>
+<p>日志是按照 32KB 的 Block 来存放的，如下图所示：</p>
+<img src="/images/pebble/log-block.png" alt="image-20220123122255184" style="zoom:50%;" />
+
+<p>如果一条日志比较小，足以放入到 1 个 Block 中，此时 Type 即为 <em>full</em>，如果一条日志比较大，那么 1 个 Block 无法放入，那么一条日志便会切分成多个片段跨多个 Block 存放，第一个片段的 Type 为 <em>first</em>，中间片段的 Type 为 <em>middle</em>，最后一个片段的 Type 为 <em>last</em>。读取日志时，便可根据 Type 将日志组装还原。</p>
+<p>有了上面对日志格式的讲解，我们再看 SyncRecord 方法就比较容易了，LogWriter.SyncRecord 的代码如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(w *LogWriter)</span></span> SyncRecord(p []<span class="type">byte</span>, wg *sync.WaitGroup, err *<span class="type">error</span>) (<span class="type">int64</span>, <span class="type">error</span>) &#123;</span><br><span class="line">  <span class="comment">// 切分数据放到片段中</span></span><br><span class="line">	<span class="keyword">for</span> i := <span class="number">0</span>; i == <span class="number">0</span> || <span class="built_in">len</span>(p) &gt; <span class="number">0</span>; i++ &#123;</span><br><span class="line">		p = w.emitFragment(i, p)</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// wg 不为空，则表示 wal 是同步落盘，因此需要通知 flusher 去刷盘</span></span><br><span class="line">	<span class="keyword">if</span> wg != <span class="literal">nil</span> &#123;</span><br><span class="line">		f := &amp;w.flusher</span><br><span class="line">		f.syncQ.push(wg, err)</span><br><span class="line">		f.ready.Signal()</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	offset := w.blockNum*blockSize + <span class="type">int64</span>(w.block.written)</span><br><span class="line">	<span class="keyword">return</span> offset, <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>SyncRecord 方法还是比较好理解，for 循环中便会将数据按照上面讲的方式切分片段，并将片段写入 block 中。如果日志为同步落盘方式，还会通知 flusher 去刷盘，同时会将 wg 放到 sync 队列，flusher 会通过 wg 异步通知 Pipeline 刷盘完成。</p>
+<p>到这里，通过 prepare 阶段已经将 Memtable 准备完毕，同时讲数据写入到 Wal 内存 Block 中，Pipeline 流程便会拿着准备好的 Memtable 进行写入操作，我们继续看下一个阶段 apply。</p>
+<h4 id="commitPipeline-commitEnv-apply"><a href="#commitPipeline-commitEnv-apply" class="headerlink" title="commitPipeline.commitEnv.apply"></a>commitPipeline.commitEnv.apply</h4><p>上一阶段已经准备好 Memtable，在 apply 阶段便会将 batch 写入到 Memtable 中。apply 的代码如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(d *DB)</span></span> commitApply(b *Batch, mem *memTable) <span class="type">error</span> &#123;</span><br><span class="line">	<span class="comment">// 写入 memtable，无锁</span></span><br><span class="line">  err := mem.apply(b, b.SeqNum())</span><br><span class="line">	<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">		<span class="keyword">return</span> err</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">  <span class="comment">// </span></span><br><span class="line">	<span class="keyword">if</span> mem.writerUnref() &#123;</span><br><span class="line">		d.mu.Lock()</span><br><span class="line">		d.maybeScheduleFlush()</span><br><span class="line">		d.mu.Unlock()</span><br><span class="line">	&#125;</span><br><span class="line">	<span class="keyword">return</span> <span class="literal">nil</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里省略了部分代码，commitAppy 方法中，首先会将 batch 写入 memtable，memtable 内部是无锁 Skiplist，支持并发读写；写入完毕后释放 memtable 的写引用，最后调用 DB.maybeScheduleFlush 决定是否将 memtable flush 到磁盘，该方法是异步执行的，因此临界区耗时较短，flush 的流程我们放到后面剖析 compaction 的章节去讲。</p>
+<p>apply 完毕后，数据就已经成功写入到 memtable 中，这时候写入流程还并未结束，数据还不能读取到。我们继续看下一阶段 publish。</p>
+<h4 id="commitPipeline-publish"><a href="#commitPipeline-publish" class="headerlink" title="commitPipeline.publish"></a>commitPipeline.publish</h4><p>回顾下 prepare 阶段，batch 的 commit 被计数，commit 为 sync.Group，主要用途是：1. Wal 如果是同步落盘，需等待 wal 落盘完毕；2. 等待 batch 的 SeqNum 被发布。接下来看看 publish 的实现逻辑：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(p *commitPipeline)</span></span> publish(b *Batch) &#123;</span><br><span class="line">	<span class="comment">// 标记当前 batch 已经 apply</span></span><br><span class="line">	atomic.StoreUint32(&amp;b.applied, <span class="number">1</span>)</span><br><span class="line"></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">    <span class="comment">// 从队列取出 batch，该 batch 可能是当前 batch，也可能是其他线程提交的 batch</span></span><br><span class="line">		t := p.pending.dequeue()</span><br><span class="line">		<span class="keyword">if</span> t == <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="comment">// 关键，1. 等待 SeqNum 被发布 2. 如果 wal 同步落盘等待 flusher 通知落盘</span></span><br><span class="line">			b.commit.Wait()</span><br><span class="line">			<span class="keyword">break</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="keyword">if</span> atomic.LoadUint32(&amp;t.applied) != <span class="number">1</span> &#123;</span><br><span class="line">			<span class="built_in">panic</span>(<span class="string">&quot;not reached&quot;</span>)</span><br><span class="line">		&#125;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 通过循环 + cas 的方式更新当前可见的 SeqNum</span></span><br><span class="line">		<span class="keyword">for</span> &#123;</span><br><span class="line">			curSeqNum := atomic.LoadUint64(p.env.visibleSeqNum)</span><br><span class="line">			newSeqNum := t.SeqNum() + <span class="type">uint64</span>(t.Count())</span><br><span class="line">			<span class="keyword">if</span> newSeqNum &lt;= curSeqNum &#123;</span><br><span class="line">				<span class="comment">// t&#x27;s sequence number has already been published.</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line">			&#125;</span><br><span class="line">			<span class="keyword">if</span> atomic.CompareAndSwapUint64(p.env.visibleSeqNum, curSeqNum, newSeqNum) &#123;</span><br><span class="line">				<span class="comment">// We successfully published t&#x27;s sequence number.</span></span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		t.commit.Done()</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>执行到 publish 方法，说明当前 batch <em><strong>b</strong></em> 已经被 appy 到 Memtable 中了，这里先将其标记为 applied 状态，然后从队列取出队头 batch，注意：1. 取出的 batch 有可能是当前线程对应的 batch，也有可能是其他线程的 batch；2. 如果队头 batch 并未 apply，则其并不会出队列，同时返回 nil 。如果返回的是 nil，则调用 commit.Wait 等待 SeqNum 发布和 Wal 落盘，否则，通过循环 + CAS 的方式更新整个 DB 的 visibleSeqNum。</p>
+<p>我们看下第二层 for 循环中更新 visibleSeqNum 的逻辑，首先通过原子操作取出 visibleSeqNum，然后根据 <em><strong>t</strong></em> 计算新的 SeqNum，如果新的 SeqNum &lt; visibleSeqNum，说明有排在 <em><strong>t</strong></em>  后面的 batch 已经被其他线程 publish 了，那么 <em><strong>t</strong></em>  也就相当于 publish 了，直接退出循环，否则更新 visibleSeqNum。<em><strong>t</strong></em> 成功 publish 后调用 t.commit 将计数减一，而后回到第一层循环继续消费 pengding 队列。</p>
+<p>可以看到，publish 设计得比较有意思，支持多个消费者同时消费 pending 队列，而且每个线程可以消费其他线程的 batch。这样做的好处是每个线程不必等着处理自己的 batch，多个线程可以接连不断地消费 pending 队列并独立 publish batch，充分利用多核优势提升性能。</p>
+<p>到此，pipeline 的三个阶段便分析完成，整个写入流程也就结束了。下一章将继续补充写入路径上对 large batch 的特殊处理，以及详细讲解 makeRoomForWrite 的执行逻辑。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>本章从源码角度出发，按照源码执行流程，对写入流程进行了剖析并着重讲解了 Pipeline 的三个阶段。Pebble 利用 Pipeline、异步处理、CAS 无锁编程、多线程等多种技术手段打造出了高效的写入性能。本章并未覆盖到所有细节点，欢迎感兴趣的同学多多交流。</p>
+
+      </div>
+    </div>
+  </article>
+  <div class="post__foot">
+    
+    <div class="post-nav">
+  
+    <a class="post-nav-item-left" href="/2022/01/27/2022-01-27-compaction-size-tiered/">
+      <div class="text-align">
+        <svg t="1670570876164"
+             class="icon"
+             viewBox="0 0 1024 1024"
+             width="16"
+             height="16">
+          <path d="M384 512L731.733333 202.666667c17.066667-14.933333 19.2-42.666667 4.266667-59.733334-14.933333-17.066667-42.666667-19.2-59.733333-4.266666l-384 341.333333c-10.666667 8.533333-14.933333 19.2-14.933334 32s4.266667 23.466667 14.933334 32l384 341.333333c8.533333 6.4 19.2 10.666667 27.733333 10.666667 12.8 0 23.466667-4.266667 32-14.933333 14.933333-17.066667 14.933333-44.8-4.266667-59.733334L384 512z" p-id="14596"/>
+        </svg>
+        <span class="text-small">上一篇</span>
+      </div>
+      <div>Compaction 策略 - Size-Tiered</div>
+    </a>
+  
+  <div class="vhr"></div>
+  
+    <a class="post-nav-item-right" href="/2022/01/20/2022-01-20-intr-pebble/">
+      <div class="text-align">
+        <span class="text-small">下一篇</span>
+        <svg t="1670570876164"
+             class="icon"
+             viewBox="0 0 1024 1024"
+             transform="scale(-1,-1)"
+             width="16"
+             height="16">
+          <path d="M384 512L731.733333 202.666667c17.066667-14.933333 19.2-42.666667 4.266667-59.733334-14.933333-17.066667-42.666667-19.2-59.733333-4.266666l-384 341.333333c-10.666667 8.533333-14.933333 19.2-14.933334 32s4.266667 23.466667 14.933334 32l384 341.333333c8.533333 6.4 19.2 10.666667 27.733333 10.666667 12.8 0 23.466667-4.266667 32-14.933333 14.933333-17.066667 14.933333-44.8-4.266667-59.733334L384 512z" p-id="14596"/>
+        </svg>
+      </div>
+      初识Pebble
+    </a>
+  
+</div>
+
+    
+    <div id="gitalk-container"></div>
+  </div>
+
+    </div>
+    <div class="foot">
+      <div class="foot-inner">
+        <div class="foot__head">
+          
+            <div class="foot-line">
+              <div class="matts">海</div><div class="matts">内</div><div class="matts">存</div><div class="matts">知</div><div class="matts">己</div>
+            </div>
+          
+            <div class="foot-line">
+              <div class="matts">天</div><div class="matts">涯</div><div class="matts">若</div><div class="matts">比</div><div class="matts">邻</div>
+            </div>
+          
+        </div>
+        <div class="foot__body">
+          
+            <div class="foot-item">
+              <div class="foot-item__head">朋友</div>
+              <div class="foot-item__body">
+                
+                  <div class="text">
+                    <img alt="link"
+                         height="20px"
+                         width="20px"
+                         src="/images/icon/icon-link.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://github.com/hooozen/hexo-theme-tranquility">Theme Tranquility</a>
+                  </div>
+                
+                <div class="text">
+                  <img alt="link"
+                       height="20px"
+                       width="20px"
+                       src="/images/icon/icon-link+.svg"/>
+                  <a class="foot-link"
+                     href="mailto:xzy.debuger@gmail.com?subject=%E7%94%B3%E8%AF%B7%20Hozen.site%20%E7%9A%84%E5%8F%8B%E9%93%BE%E4%BD%8D%E7%BD%AE">
+                  申请友链</a>
+                </div>
+              </div>
+            </div>
+          
+          
+            <div class="foot-item">
+              <div class="foot-item__head">账号</div>
+              <div class="foot-item__body">
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-github.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://github.com/zhenyuxie">github</a>
+                  </div>
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-wx.svg"/>
+                    <a class="foot-link" href="xxx">微信公众号</a>
+                  </div>
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-zh.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://www.zhihu.com/people/xzy-51-38">知乎</a>
+                  </div>
+                
+              </div>
+            </div>
+          
+          <div class="foot-item">
+            <div class="foot-item__head">联系</div>
+            <div class="foot-item__body">
+              <div class="text">
+                <img alt="link"
+                     height="20px"
+                     width="20px"
+                     src="/images/icon/icon-email.svg"/>
+                <a class="foot-link" href="mailto:xzy.debuger@gmail.com">xzy.debuger@gmail.com</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="copyright">
+          <a href="https://zhenyuxie.github.io">Debuger</a> &nbsp;|&nbsp;由&nbsp;<a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>&nbsp;及&nbsp;
+          <svg width="20" height="20" viewBox="0 0 725 725">
+            <path fill-rule="evenodd" fill="rgb(221, 221, 221)"
+            d="M145.870,236.632 L396.955,103.578 L431.292,419.44 L156.600,522.53 L145.870,236.632 Z" />
+            <path fill-rule="evenodd" fill="rgb(159, 159, 159)"
+            d="M396.955,103.578 L564.345,234.486 L611.558,513.469 L431.292,419.44 L396.955,103.578 Z" />
+            <path fill-rule="evenodd" fill="rgb(0, 0, 0)"
+            d="M431.292,419.44 L611.558,513.469 L358.327,595.18 L156.600,522.53 L431.292,419.44 Z" />
+          </svg>
+          <a target="_blank" rel="noopener" href="https://github.com/hooozen/hexo-theme-tranquility">致远</a>&nbsp;驱动
+        </div>
+      </div>
+    </div>
+    
+    
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script type="text/javascript">
+  const param = JSON.parse('{"enable":true,"owner":"zhenyuxie","admin":["zhenyuxie"],"repo":"zhenyuxie/zhenyuxie.github.io","clientID":"cd5afced7353e1fbf7a6","clientSecret":"774ba7bb3da4d779a15e76442c2474e39ac01031","distractionFreeMode":false,"proxy":"https://cors-anywhere.azm.workers.dev/https://github.com/login/oauth/access_token","language":"zh-CN"}')
+  param.id = location.pathname
+  const gitalk = new Gitalk(param)
+  gitalk.render('gitalk-container')
+</script>
+
+
+  </body>
+</html>

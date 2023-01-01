@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+  <head>
+    <meta charset="utf8" />
+    <meta name="viewport" content="initial-scale=1.0, width=device-width" />
+    <title>
+      
+         | Debuger
+      
+    </title>
+    <meta name="description" content="description"/>
+    <meta name="keywords" content="keywords"/>
+    
+      <link rel="apple-touch-icon"
+            sizes="180x180"
+            href="/images/apple-touch-icon.png"/>
+    
+    
+      <link rel="icon"
+            type="image/png"
+            sizes="32x32"
+            href="/images/favicon-32x32.png"/>
+    
+    
+      <link rel="icon"
+            type="image/png"
+            sizes="16x16"
+            href="/images/favicon-16x16.png"/>
+    
+    
+      <link rel="mask-icon"
+            href="/images/logo.svg"
+            color=""/>
+    
+    
+    <link rel="stylesheet" type="text/css" href="/css/layout.css"/>
+    
+    
+  <link rel="stylesheet" type="text/css" href="/css/post.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/gitalk/dist/gitalk.css" />
+
+  <meta name="generator" content="Hexo 6.3.0"></head>
+  <body>
+    <div class="head">
+      <div class="nav">
+        <a href="/" class="nav-logo">
+          <img alt="logo" height="60px" width="60px" src="/images/logo.svg" />
+        </a>
+        <input id="navBtn" type="checkbox"/>
+        <div class="nav-menu">
+          
+            
+              <a class="nav-menu-item" href="/computer">计算机技术</a>
+            
+              <a class="nav-menu-item" href="/science">数理科学</a>
+            
+              <a class="nav-menu-item" href="/life">生活</a>
+            
+          
+        </div>
+        <label class="nav-btn" for="navBtn"></label>
+      </div>
+    </div>
+    <div class="body">
+      
+  <article class="post-content">
+    <div class="post-inner">
+      <div class="post-content__head">
+        <div class="post-title">未命名</div>
+        <div class="post-info">
+          
+  
+
+
+          <span class="post-date">2022-12-31</span>
+        </div>
+      </div>
+      <div class="post-content__body">
+        
+          <div class="post-gallery">
+            
+          </div>
+        
+        <h3 id="内存写入流程"><a href="#内存写入流程" class="headerlink" title="内存写入流程"></a>内存写入流程</h3><h4 id="Demo"><a href="#Demo" class="headerlink" title="Demo"></a>Demo</h4><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">Main</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> <span class="keyword">throws</span> IOException, ParseException &#123;</span><br><span class="line">        <span class="type">Engine</span> <span class="variable">engine</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Engine</span>(<span class="string">&quot;./data/demo2&quot;</span>);</span><br><span class="line">        engine.batchIndex(getSortedSetDocValues());</span><br><span class="line">        engine.flush();</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> List&lt;Document&gt; <span class="title function_">getSortedSetDocValues</span><span class="params">()</span> &#123;</span><br><span class="line">        List&lt;Document&gt; docs = <span class="keyword">new</span> <span class="title class_">ArrayList</span>&lt;&gt;();</span><br><span class="line"></span><br><span class="line">        <span class="type">Document</span> <span class="variable">doc1</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Document</span>();</span><br><span class="line">        doc1.add(<span class="keyword">new</span> <span class="title class_">SortedSetDocValuesField</span>(<span class="string">&quot;sorted_set_field&quot;</span>, <span class="keyword">new</span> <span class="title class_">BytesRef</span>(<span class="string">&quot;hello&quot;</span>)));</span><br><span class="line">        doc1.add(<span class="keyword">new</span> <span class="title class_">SortedSetDocValuesField</span>(<span class="string">&quot;sorted_set_field&quot;</span>, <span class="keyword">new</span> <span class="title class_">BytesRef</span>(<span class="string">&quot;allen&quot;</span>)));</span><br><span class="line">        docs.add(doc1);</span><br><span class="line"></span><br><span class="line">        <span class="type">Document</span> <span class="variable">doc2</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Document</span>();</span><br><span class="line">        doc2.add(<span class="keyword">new</span> <span class="title class_">SortedSetDocValuesField</span>(<span class="string">&quot;sorted_set_field&quot;</span>, <span class="keyword">new</span> <span class="title class_">BytesRef</span>(<span class="string">&quot;hi&quot;</span>)));</span><br><span class="line">        doc2.add(<span class="keyword">new</span> <span class="title class_">SortedSetDocValuesField</span>(<span class="string">&quot;sorted_set_field&quot;</span>, <span class="keyword">new</span> <span class="title class_">BytesRef</span>(<span class="string">&quot;brother&quot;</span>)));</span><br><span class="line">        docs.add(doc2);</span><br><span class="line"></span><br><span class="line">        <span class="type">Document</span> <span class="variable">doc3</span> <span class="operator">=</span> <span class="keyword">new</span> <span class="title class_">Document</span>();</span><br><span class="line">        doc3.add(<span class="keyword">new</span> <span class="title class_">SortedSetDocValuesField</span>(<span class="string">&quot;sorted_set_field&quot;</span>, <span class="keyword">new</span> <span class="title class_">BytesRef</span>(<span class="string">&quot;action&quot;</span>)));</span><br><span class="line">        doc3.add(<span class="keyword">new</span> <span class="title class_">SortedSetDocValuesField</span>(<span class="string">&quot;sorted_set_field&quot;</span>, <span class="keyword">new</span> <span class="title class_">BytesRef</span>(<span class="string">&quot;lucene&quot;</span>)));</span><br><span class="line">        docs.add(doc3);</span><br><span class="line"></span><br><span class="line">        <span class="keyword">return</span> docs;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="SortedSetDocValuesWriter"><a href="#SortedSetDocValuesWriter" class="headerlink" title="SortedSetDocValuesWriter"></a>SortedSetDocValuesWriter</h4><h5 id="关键成员变量"><a href="#关键成员变量" class="headerlink" title="关键成员变量"></a>关键成员变量</h5><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">final</span> BytesRefHash hash; <span class="comment">// 用来存 term-&gt;termID 的映射</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> PackedLongValues.Builder pending; <span class="comment">// stream of all termIDs 存储所有的文档对应的 termIDs</span></span><br><span class="line"><span class="keyword">private</span> PackedLongValues.Builder pendingCounts; <span class="comment">// termIDs per doc 每个文档对应的 termID 数</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> DocsWithFieldSet docsWithField; <span class="comment">// 包含该 field 的 docs</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> Counter iwBytesUsed;</span><br><span class="line"><span class="keyword">private</span> <span class="type">long</span> bytesUsed; <span class="comment">// this only tracks differences in &#x27;pending&#x27; and &#x27;pendingCounts&#x27;</span></span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> FieldInfo fieldInfo;</span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span> <span class="variable">currentDoc</span> <span class="operator">=</span> -<span class="number">1</span>; <span class="comment">// 记录当前处理的 docID</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span>[] currentValues = <span class="keyword">new</span> <span class="title class_">int</span>[<span class="number">8</span>]; <span class="comment">// 存储当前 doc 对于的 values，这里实际存的是 value 对应的 termID</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span> currentUpto; <span class="comment">// currentValues 的偏移</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span> maxCount; <span class="comment">// 记录 termIDs per doc 的最大值</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">private</span> PackedLongValues finalOrds;</span><br><span class="line"><span class="keyword">private</span> PackedLongValues finalOrdCounts;</span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span>[] finalSortedValues;</span><br><span class="line"><span class="keyword">private</span> <span class="type">int</span>[] finalOrdMap;</span><br></pre></td></tr></table></figure>
+
+<h5 id="addValue"><a href="#addValue" class="headerlink" title="addValue"></a>addValue</h5><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">addValue</span><span class="params">(<span class="type">int</span> docID, BytesRef value)</span> &#123;</span><br><span class="line">  <span class="keyword">if</span> (docID != currentDoc) &#123; <span class="comment">// 如果add的docID和当前记录的currentDoc不相等，说明currentDoc的所有field value 已经添加完毕，finish当前doc</span></span><br><span class="line">    finishCurrentDoc();</span><br><span class="line">    currentDoc = docID;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  addOneValue(value);</span><br><span class="line">  updateBytesUsed();</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>该方法是写入 SortedSetDocValues 的入口函数。首先比较写入的 docID 和当前记录的 currentDoc 是否相等，如果不相等，说明 currentDoc 对应的 values 已经添加完毕，需要收尾处理 currentDoc。下面依次讲解 addOneValue 和 finishCurrentDoc。</p>
+<h6 id="addOneValue"><a href="#addOneValue" class="headerlink" title="addOneValue"></a>addOneValue</h6><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">addOneValue</span><span class="params">(BytesRef value)</span> &#123;</span><br><span class="line">  <span class="type">int</span> <span class="variable">termID</span> <span class="operator">=</span> hash.add(value);</span><br><span class="line">  <span class="comment">// 省略非重要逻辑</span></span><br><span class="line"></span><br><span class="line">  currentValues[currentUpto] = termID;</span><br><span class="line">  currentUpto++;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>addOneValue  的逻辑非常简单，首先将 value 加入到 hash 中，返回当前 value 对于的 termID；然后将 termID 加入到 currentValues。如果 hash 中不存在当前 value，则会生成对应的 termID，termID 是递增生成的。demo 中 value 生成的 termID 如下：</p>
+<table>
+<thead>
+<tr>
+<th align="center">value</th>
+<th align="center"><em>hello</em></th>
+<th align="center"><em>allen</em></th>
+<th align="center"><em>hi</em></th>
+<th align="center"><em>brother</em></th>
+<th align="center"><em>action</em></th>
+<th align="center"><em>lucene</em></th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">termID</td>
+<td align="center">0</td>
+<td align="center">1</td>
+<td align="center">2</td>
+<td align="center">3</td>
+<td align="center">4</td>
+<td align="center">5</td>
+</tr>
+</tbody></table>
+<h6 id="finishCurrentDoc"><a href="#finishCurrentDoc" class="headerlink" title="finishCurrentDoc"></a>finishCurrentDoc</h6><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">finishCurrentDoc</span><span class="params">()</span> &#123;</span><br><span class="line">  <span class="keyword">if</span> (currentDoc == -<span class="number">1</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  Arrays.sort(currentValues, <span class="number">0</span>, currentUpto); <span class="comment">// 排序 termID</span></span><br><span class="line">  <span class="type">int</span> <span class="variable">lastValue</span> <span class="operator">=</span> -<span class="number">1</span>;</span><br><span class="line">  <span class="type">int</span> <span class="variable">count</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">  <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; currentUpto; i++) &#123;</span><br><span class="line">    <span class="type">int</span> <span class="variable">termID</span> <span class="operator">=</span> currentValues[i];</span><br><span class="line">    <span class="comment">// if it&#x27;s not a duplicate</span></span><br><span class="line">    <span class="keyword">if</span> (termID != lastValue) &#123;</span><br><span class="line">      pending.add(termID); <span class="comment">// record the term id</span></span><br><span class="line">      count++;</span><br><span class="line">    &#125;</span><br><span class="line">    lastValue = termID;</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="comment">// record the number of unique term ids for this doc</span></span><br><span class="line">  <span class="keyword">if</span> (pendingCounts != <span class="literal">null</span>) &#123;</span><br><span class="line">    pendingCounts.add(count);</span><br><span class="line">  &#125; <span class="keyword">else</span> <span class="keyword">if</span> (count != <span class="number">1</span>) &#123;</span><br><span class="line">    pendingCounts = PackedLongValues.deltaPackedBuilder(PackedInts.COMPACT);</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">i</span> <span class="operator">=</span> <span class="number">0</span>; i &lt; docsWithField.cardinality(); ++i) &#123;</span><br><span class="line">      pendingCounts.add(<span class="number">1</span>);</span><br><span class="line">    &#125;</span><br><span class="line">    pendingCounts.add(count);</span><br><span class="line">  &#125;</span><br><span class="line">  maxCount = Math.max(maxCount, count);</span><br><span class="line">  currentUpto = <span class="number">0</span>;</span><br><span class="line">  docsWithField.add(currentDoc);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>finishCurrentDoc 的目的主要是将 currentValues 中的 values 即 termIDs 存入到 <strong>pending</strong> 中，同时将当前 doc 包含的 termID 个数存入 <strong>pendingCounts</strong>。注意这里 currentValues 中的 termIDs 会去重，因此 lucene 的 SortedSetDocValues 只会存储重复字符串中的一个。最后会将 currentDoc 加入到 <strong>docsWithField</strong> 中，表示 currentDoc 包含当前处理的字段。</p>
+<p>经过 addValue 流程，docID 和 docValues 数据便已写入到内存结构中。内存中的数据 ready 好后，便会在某个时刻刷入到磁盘中生成对应的文件，下面会详细介绍。</p>
+<h5 id="flush"><a href="#flush" class="headerlink" title="flush"></a>flush</h5><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title function_">flush</span><span class="params">(SegmentWriteState state, Sorter.DocMap sortMap, DocValuesConsumer dvConsumer)</span></span><br><span class="line">    <span class="keyword">throws</span> IOException &#123;</span><br><span class="line">  <span class="keyword">final</span> <span class="type">int</span> <span class="variable">valueCount</span> <span class="operator">=</span> hash.size();</span><br><span class="line">  <span class="keyword">final</span> PackedLongValues ords;</span><br><span class="line">  <span class="keyword">final</span> PackedLongValues ordCounts;</span><br><span class="line">  <span class="keyword">final</span> <span class="type">int</span>[] sortedValues; <span class="comment">// ord -&gt; termID, 下标表示 ord，值是 termID</span></span><br><span class="line">  <span class="keyword">final</span> <span class="type">int</span>[] ordMap; <span class="comment">// termID -&gt; ord，下标表示 termID，值是 ord</span></span><br><span class="line"></span><br><span class="line">  <span class="keyword">if</span> (finalOrds == <span class="literal">null</span>) &#123;</span><br><span class="line">    <span class="keyword">assert</span> finalOrdCounts == <span class="literal">null</span> &amp;&amp; finalSortedValues == <span class="literal">null</span> &amp;&amp; finalOrdMap == <span class="literal">null</span>;</span><br><span class="line">    finishCurrentDoc(); <span class="comment">// finish 最后一个 doc</span></span><br><span class="line">    ords = pending.build();</span><br><span class="line">    ordCounts = pendingCounts == <span class="literal">null</span> ? <span class="literal">null</span> : pendingCounts.build();</span><br><span class="line">    sortedValues = hash.sort();</span><br><span class="line">    ordMap = <span class="keyword">new</span> <span class="title class_">int</span>[valueCount];</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">ord</span> <span class="operator">=</span> <span class="number">0</span>; ord &lt; valueCount; ord++) &#123;</span><br><span class="line">      ordMap[sortedValues[ord]] = ord;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    ords = finalOrds;</span><br><span class="line">    ordCounts = finalOrdCounts;</span><br><span class="line">    sortedValues = finalSortedValues;</span><br><span class="line">    ordMap = finalOrdMap;</span><br><span class="line">  &#125;</span><br><span class="line"></span><br><span class="line">  <span class="keyword">final</span> DocOrds docOrds;</span><br><span class="line">  <span class="keyword">if</span> (sortMap != <span class="literal">null</span>) &#123;</span><br><span class="line">    docOrds =</span><br><span class="line">        <span class="keyword">new</span> <span class="title class_">DocOrds</span>(</span><br><span class="line">            state.segmentInfo.maxDoc(),</span><br><span class="line">            sortMap,</span><br><span class="line">            getValues(sortedValues, ordMap, hash, ords, ordCounts, maxCount, docsWithField),</span><br><span class="line">            PackedInts.FASTEST);</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    docOrds = <span class="literal">null</span>;</span><br><span class="line">  &#125;</span><br><span class="line">  dvConsumer.addSortedSetField(</span><br><span class="line">      fieldInfo,</span><br><span class="line">      <span class="keyword">new</span> <span class="title class_">EmptyDocValuesProducer</span>() &#123;</span><br><span class="line">        <span class="meta">@Override</span></span><br><span class="line">        <span class="keyword">public</span> SortedSetDocValues <span class="title function_">getSortedSet</span><span class="params">(FieldInfo fieldInfoIn)</span> &#123;</span><br><span class="line">          <span class="keyword">if</span> (fieldInfoIn != fieldInfo) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> <span class="title class_">IllegalArgumentException</span>(<span class="string">&quot;wrong fieldInfo&quot;</span>);</span><br><span class="line">          &#125;</span><br><span class="line">          <span class="keyword">final</span> <span class="type">SortedSetDocValues</span> <span class="variable">buf</span> <span class="operator">=</span></span><br><span class="line">              getValues(sortedValues, ordMap, hash, ords, ordCounts, maxCount, docsWithField);</span><br><span class="line">          <span class="keyword">if</span> (docOrds == <span class="literal">null</span>) &#123;</span><br><span class="line">            <span class="keyword">return</span> buf;</span><br><span class="line">          &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">return</span> <span class="keyword">new</span> <span class="title class_">SortingSortedSetDocValues</span>(buf, docOrds);</span><br><span class="line">          &#125;</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里面注意两个关键结构：<strong>sortedValues</strong>，<strong>ordMap</strong>。<strong>sortedValues 是 ord 到 termID 的映射</strong>，下标代表 ord，值是 termID；相反，<strong>ordMap 是 termID 到 ord 的映射</strong>，下标表示 termID，值是 ord。下面我们看 finalOrds &#x3D;&#x3D; null 这个分支，因为最后添加的 doc 还没 finish，这里还要调用一次 finishCurrentDoc，完了后，所有 doc 的数据都存入到内存结构中了；接着会对 hash 按 term（注意不是 termID） 排序，并将对应的 termID 放到排序后的位置，存储结构就是 sortedValues；下一步会将根据 sortedValues 生成 ordMap。至此，内存视图如下：</p>
+<p><strong>pending</strong>: [0,1,2,3,4,5]</p>
+<p><strong>pendingCounts</strong>: [2,2,2]</p>
+<p><strong>sortedValues</strong>: [4,1,3,0,2,5]</p>
+<p><strong>ordMap</strong>: [3,1,4,2,0,5]</p>
+<p><strong>hash</strong>: hello -&gt; 0, allen-&gt;1, hi -&gt; 2, brother -&gt; 3, action -&gt; 4, lucene -&gt; 5</p>
+<table>
+<thead>
+<tr>
+<th align="center">value</th>
+<th align="center"><em>hello</em></th>
+<th align="center"><em>allen</em></th>
+<th align="center"><em>hi</em></th>
+<th align="center"><em>brother</em></th>
+<th align="center"><em>action</em></th>
+<th align="center"><em>lucene</em></th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">termID</td>
+<td align="center">0</td>
+<td align="center">1</td>
+<td align="center">2</td>
+<td align="center">3</td>
+<td align="center">4</td>
+<td align="center">5</td>
+</tr>
+<tr>
+<td align="center">Ord</td>
+<td align="center">3</td>
+<td align="center">1</td>
+<td align="center">4</td>
+<td align="center">2</td>
+<td align="center">0</td>
+<td align="center">5</td>
+</tr>
+</tbody></table>
+<p>最后会调用 dvConsumer.addSortedSetField 将内存中的数据写入到 Segment 中，具体的写入逻辑下面会详细分析。</p>
+<h4 id="Lucene90DocValuesConsumer"><a href="#Lucene90DocValuesConsumer" class="headerlink" title="Lucene90DocValuesConsumer"></a>Lucene90DocValuesConsumer</h4><p>本小结，我们会一步一步根据源码来探究 SortedSetDocvalues 的文件组织格式，并会着重分析其中涉及的关键技术。</p>
+<h5 id="成员变量"><a href="#成员变量" class="headerlink" title="成员变量"></a>成员变量</h5><figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">IndexOutput data, meta; <span class="comment">// data 代表数据文件（.dvd）, meta 代表元数据文件（.dvm）</span></span><br><span class="line"><span class="keyword">final</span> <span class="type">int</span> maxDoc; <span class="comment">// 最大文档数</span></span><br><span class="line"><span class="keyword">private</span> <span class="type">byte</span>[] termsDictBuffer;</span><br></pre></td></tr></table></figure>
+
+<h5 id="addSortedSetField"><a href="#addSortedSetField" class="headerlink" title="addSortedSetField"></a>addSortedSetField</h5><p>这个方法是写入 Segment 的入口，代码比较长，我们逐一分解。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">meta.writeInt(field.number);</span><br><span class="line">meta.writeByte(Lucene90DocValuesFormat.SORTED_SET);</span><br></pre></td></tr></table></figure>
+
+<p>将当前 field 的编号写入 meta，占用 4 字节；再将 docValues 的类型（这里是 SORTED_SET）写入到 meta，占用 1 字节。当前 meta 的文件格式如下：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">+--------+----------+---------+</span><br><span class="line">| Header | field_No | DV_type |</span><br><span class="line">+--------+----------+---------+</span><br></pre></td></tr></table></figure>
+
+<p>我们接着看往下看：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> (isSingleValued(valuesProducer.getSortedSet(field))) &#123;</span><br><span class="line">  meta.writeByte((<span class="type">byte</span>) <span class="number">0</span>); <span class="comment">// multiValued (0 = singleValued)</span></span><br><span class="line">  doAddSortedField(</span><br><span class="line">      field,</span><br><span class="line">      <span class="keyword">new</span> <span class="title class_">EmptyDocValuesProducer</span>() &#123;</span><br><span class="line">        <span class="meta">@Override</span></span><br><span class="line">        <span class="keyword">public</span> SortedDocValues <span class="title function_">getSorted</span><span class="params">(FieldInfo field)</span> <span class="keyword">throws</span> IOException &#123;</span><br><span class="line">          <span class="keyword">return</span> SortedSetSelector.wrap(</span><br><span class="line">              valuesProducer.getSortedSet(field), SortedSetSelector.Type.MIN);</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;);</span><br><span class="line">  <span class="keyword">return</span>;</span><br><span class="line">&#125;</span><br><span class="line">meta.writeByte((<span class="type">byte</span>) <span class="number">1</span>); <span class="comment">// multiValued (1 = multiValued)</span></span><br></pre></td></tr></table></figure>
+
+<p>首先判断当前 field 是否为单值的，所谓单值就是指该字段在所有文档中都只有一个值。如果是单值会在 meta 中写入标志位 0，否则写入 1，表示多值。该标志位占用一个字节。当前 meta 的文件格式如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">+--------+----------+---------+--------------+</span><br><span class="line">| Header | field_No | DV_type | SingleValued |</span><br><span class="line">+--------+----------+---------+--------------+</span><br></pre></td></tr></table></figure>
+
+<p>如果是单值，其实就退化成 SortedDocValues，那么下面的处理逻辑则和 SortedDocValues 一样。本章的 Demo 会走 多值的分支，所以我们继续往下分析。</p>
+<h5 id="doAddSortedNumericField"><a href="#doAddSortedNumericField" class="headerlink" title="doAddSortedNumericField"></a>doAddSortedNumericField</h5><p>该方法是专门针对多值处理的，代码如下：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">void</span> <span class="title function_">doAddSortedNumericField</span><span class="params">(FieldInfo field, DocValuesProducer valuesProducer)</span></span><br><span class="line">    <span class="keyword">throws</span> IOException &#123;</span><br><span class="line">  <span class="type">long</span>[] stats = writeValues(field, valuesProducer, <span class="literal">false</span>);</span><br><span class="line">  <span class="type">int</span> <span class="variable">numDocsWithField</span> <span class="operator">=</span> Math.toIntExact(stats[<span class="number">0</span>]);</span><br><span class="line">  <span class="type">long</span> <span class="variable">numValues</span> <span class="operator">=</span> stats[<span class="number">1</span>];</span><br><span class="line">  <span class="keyword">assert</span> numValues &gt;= numDocsWithField;</span><br><span class="line"></span><br><span class="line">  meta.writeInt(numDocsWithField);</span><br><span class="line">  <span class="keyword">if</span> (numValues &gt; numDocsWithField) &#123;</span><br><span class="line">    <span class="type">long</span> <span class="variable">start</span> <span class="operator">=</span> data.getFilePointer();</span><br><span class="line">    meta.writeLong(start);</span><br><span class="line">    meta.writeVInt(DIRECT_MONOTONIC_BLOCK_SHIFT);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">final</span> <span class="type">DirectMonotonicWriter</span> <span class="variable">addressesWriter</span> <span class="operator">=</span></span><br><span class="line">        DirectMonotonicWriter.getInstance(</span><br><span class="line">            meta, data, numDocsWithField + <span class="number">1L</span>, DIRECT_MONOTONIC_BLOCK_SHIFT);</span><br><span class="line">    <span class="type">long</span> <span class="variable">addr</span> <span class="operator">=</span> <span class="number">0</span>;</span><br><span class="line">    addressesWriter.add(addr);</span><br><span class="line">    <span class="type">SortedNumericDocValues</span> <span class="variable">values</span> <span class="operator">=</span> valuesProducer.getSortedNumeric(field);</span><br><span class="line">    <span class="keyword">for</span> (<span class="type">int</span> <span class="variable">doc</span> <span class="operator">=</span> values.nextDoc();</span><br><span class="line">        doc != DocIdSetIterator.NO_MORE_DOCS;</span><br><span class="line">        doc = values.nextDoc()) &#123;</span><br><span class="line">      addr += values.docValueCount();</span><br><span class="line">      addressesWriter.add(addr);</span><br><span class="line">    &#125;</span><br><span class="line">    addressesWriter.finish();</span><br><span class="line">    meta.writeLong(data.getFilePointer() - start);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们先关注 writeValues 这个方法。</p>
+<h5 id="writeValues"><a href="#writeValues" class="headerlink" title="writeValues"></a>writeValues</h5><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"></span><br></pre></td></tr></table></figure>
+
+
+
+
+
+
+
+
+
+
+      </div>
+    </div>
+  </article>
+  <div class="post__foot">
+    
+    <div class="post-nav">
+  
+    <a class="post-nav-item-left" href="/2022/12/31/2022%E5%B9%B4%E7%BB%88%E6%80%BB%E7%BB%93/">
+      <div class="text-align">
+        <svg t="1670570876164"
+             class="icon"
+             viewBox="0 0 1024 1024"
+             width="16"
+             height="16">
+          <path d="M384 512L731.733333 202.666667c17.066667-14.933333 19.2-42.666667 4.266667-59.733334-14.933333-17.066667-42.666667-19.2-59.733333-4.266666l-384 341.333333c-10.666667 8.533333-14.933333 19.2-14.933334 32s4.266667 23.466667 14.933334 32l384 341.333333c8.533333 6.4 19.2 10.666667 27.733333 10.666667 12.8 0 23.466667-4.266667 32-14.933333 14.933333-17.066667 14.933333-44.8-4.266667-59.733334L384 512z" p-id="14596"/>
+        </svg>
+        <span class="text-small">上一篇</span>
+      </div>
+      <div>未命名</div>
+    </a>
+  
+  <div class="vhr"></div>
+  
+    <a class="post-nav-item-right" href="/2022/12/18/2022-12-18-lucene-DirectMonotonicWriter/">
+      <div class="text-align">
+        <span class="text-small">下一篇</span>
+        <svg t="1670570876164"
+             class="icon"
+             viewBox="0 0 1024 1024"
+             transform="scale(-1,-1)"
+             width="16"
+             height="16">
+          <path d="M384 512L731.733333 202.666667c17.066667-14.933333 19.2-42.666667 4.266667-59.733334-14.933333-17.066667-42.666667-19.2-59.733333-4.266666l-384 341.333333c-10.666667 8.533333-14.933333 19.2-14.933334 32s4.266667 23.466667 14.933334 32l384 341.333333c8.533333 6.4 19.2 10.666667 27.733333 10.666667 12.8 0 23.466667-4.266667 32-14.933333 14.933333-17.066667 14.933333-44.8-4.266667-59.733334L384 512z" p-id="14596"/>
+        </svg>
+      </div>
+      lucene 编码技术 - DirectMonotonicWriter
+    </a>
+  
+</div>
+
+    
+    <div id="gitalk-container"></div>
+  </div>
+
+    </div>
+    <div class="foot">
+      <div class="foot-inner">
+        <div class="foot__head">
+          
+            <div class="foot-line">
+              <div class="matts">海</div><div class="matts">内</div><div class="matts">存</div><div class="matts">知</div><div class="matts">己</div>
+            </div>
+          
+            <div class="foot-line">
+              <div class="matts">天</div><div class="matts">涯</div><div class="matts">若</div><div class="matts">比</div><div class="matts">邻</div>
+            </div>
+          
+        </div>
+        <div class="foot__body">
+          
+            <div class="foot-item">
+              <div class="foot-item__head">朋友</div>
+              <div class="foot-item__body">
+                
+                  <div class="text">
+                    <img alt="link"
+                         height="20px"
+                         width="20px"
+                         src="/images/icon/icon-link.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://github.com/hooozen/hexo-theme-tranquility">Theme Tranquility</a>
+                  </div>
+                
+                <div class="text">
+                  <img alt="link"
+                       height="20px"
+                       width="20px"
+                       src="/images/icon/icon-link+.svg"/>
+                  <a class="foot-link"
+                     href="mailto:xzy.debuger@gmail.com?subject=%E7%94%B3%E8%AF%B7%20Hozen.site%20%E7%9A%84%E5%8F%8B%E9%93%BE%E4%BD%8D%E7%BD%AE">
+                  申请友链</a>
+                </div>
+              </div>
+            </div>
+          
+          
+            <div class="foot-item">
+              <div class="foot-item__head">账号</div>
+              <div class="foot-item__body">
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-github.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://github.com/zhenyuxie">github</a>
+                  </div>
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-wx.svg"/>
+                    <a class="foot-link" href="xxx">微信公众号</a>
+                  </div>
+                
+                  <div class="text">
+                    <img alt="link" height="20px" width="20px" src="/images/logo-zh.svg"/>
+                    <a class="foot-link" target="_blank" rel="noopener" href="https://www.zhihu.com/people/xzy-51-38">知乎</a>
+                  </div>
+                
+              </div>
+            </div>
+          
+          <div class="foot-item">
+            <div class="foot-item__head">联系</div>
+            <div class="foot-item__body">
+              <div class="text">
+                <img alt="link"
+                     height="20px"
+                     width="20px"
+                     src="/images/icon/icon-email.svg"/>
+                <a class="foot-link" href="mailto:xzy.debuger@gmail.com">xzy.debuger@gmail.com</a>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="copyright">
+          <a href="https://zhenyuxie.github.io">Debuger</a> &nbsp;|&nbsp;由&nbsp;<a target="_blank" rel="noopener" href="https://hexo.io/">Hexo</a>&nbsp;及&nbsp;
+          <svg width="20" height="20" viewBox="0 0 725 725">
+            <path fill-rule="evenodd" fill="rgb(221, 221, 221)"
+            d="M145.870,236.632 L396.955,103.578 L431.292,419.44 L156.600,522.53 L145.870,236.632 Z" />
+            <path fill-rule="evenodd" fill="rgb(159, 159, 159)"
+            d="M396.955,103.578 L564.345,234.486 L611.558,513.469 L431.292,419.44 L396.955,103.578 Z" />
+            <path fill-rule="evenodd" fill="rgb(0, 0, 0)"
+            d="M431.292,419.44 L611.558,513.469 L358.327,595.18 L156.600,522.53 L431.292,419.44 Z" />
+          </svg>
+          <a target="_blank" rel="noopener" href="https://github.com/hooozen/hexo-theme-tranquility">致远</a>&nbsp;驱动
+        </div>
+      </div>
+    </div>
+    
+    
+  <script src="https://unpkg.com/gitalk/dist/gitalk.min.js"></script>
+<script type="text/javascript">
+  const param = JSON.parse('{"enable":true,"owner":"zhenyuxie","admin":["zhenyuxie"],"repo":"zhenyuxie/zhenyuxie.github.io","clientID":"cd5afced7353e1fbf7a6","clientSecret":"774ba7bb3da4d779a15e76442c2474e39ac01031","distractionFreeMode":false,"proxy":"https://cors-anywhere.azm.workers.dev/https://github.com/login/oauth/access_token","language":"zh-CN"}')
+  param.id = location.pathname
+  const gitalk = new Gitalk(param)
+  gitalk.render('gitalk-container')
+</script>
+
+
+  </body>
+</html>
