@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="description">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      Compaction 策略 - Leveled | Debuger
+    
+  </title>
+  <link href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+
+  
+  <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.js"></script>
+  
+  
+    
+<script src="/js/gitment.js"></script>
+
+  
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+  
+  
+    
+<script src="/js/local-search.js"></script>
+
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Debuger</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/tags/" class="item-link">Tags</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/project/" class="item-link">Projects</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+      
+        <li class="menu-item menu-item-search right-list">
+    <a role="button" class="popup-trigger">
+        <i class="fa fa-search fa-fw"></i>
+    </a>
+</li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/tags/" class="menu-link">Tags</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/project/" class="menu-link">Projects</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+    
+      <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+            <span class="search-icon">
+                <i class="fa fa-search"></i>
+            </span>
+            <div class="search-input-container">
+                <input autocomplete="off" autocapitalize="off"
+                    placeholder="Please enter your keyword(s) to search." spellcheck="false"
+                    type="search" class="search-input">
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa fa-times-circle"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+    
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>Compaction 策略 - Leveled</h2>
+  <p class="post-date">2022-01-30</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><p>在上一章，我们介绍了 <strong>Size-Tiered Compaction 策略（STCS）</strong>，讨论了 STCS 的原理，并着重分析了它的缺陷 – <strong>空间放大</strong>。本章我们将会介绍另一种策略 – <strong>Level Compaction Strategy (LCS)<strong>，该策略能够显著降低 STCS 带来的空间放大，同时也能改善</strong>读放大</strong>带来的性能损失，但它也会带来其他负面的效果 – <strong>写放大</strong>。本章我们将围绕空间放大、写放大、读放大，三个维度来展开分析 LCS。</p>
+<h3 id="Leveled-Compaction-Strategy"><a href="#Leveled-Compaction-Strategy" class="headerlink" title="Leveled Compaction Strategy"></a>Leveled Compaction Strategy</h3><p>与 STCS 对比，LCS 具备如下特点：</p>
+<ul>
+<li>sst 的大小可控，默认每个 sst 的大小一致（STCS 在经过多次合并后，层级越深，产生的 sst 文件就越大，最终会形成超大文件）</li>
+<li>LCS 在合并时，会保证除 Level 0（L0）之外的其他 Level 有序且无覆盖</li>
+<li>除 L0 外，每层文件的总大小呈指数增长，假如 L1 最多 10 个，则 L2 为 100 个，L3 为 1000 个…</li>
+</ul>
+<p>我们来看下 LCS 具体是如何工作的，如下图：</p>
+<p><img src="/images/lsm/leveled-compaction-1-png.png" alt="leveled-compaction-1-png"></p>
+<p>首先是内存中的 memtable 刷到 L0，当 L0 中的文件数达到一定阈值后，会将 L0 的所有文件及与 L1 有覆盖的文件做合并，然后生成新文件（如果文件大小超过阈值，会切成多个）到 L1，L1 中的文件时全局有序的，不会重现重叠的情况；</p>
+<p>当 L1 的文件数量达到阈值时，会选取 L1 中的一个 sst 与 L2 中的多个文件做合并，假设 L1 有 10 个文件，那么一个文件便占 L1 数据量的 1&#x2F;10，假设每层包含的 key 范围相同，那么 L1 中的一个文件理论上会覆盖 L2 层的 10 个文件，因此会选取 L1 中的一个文件与 L2 中的 10 个文件一起 compaction，将生成的新文件放到 L2；</p>
+<p>当 L2 文件数量达到阈值时，处理方式同上，如此往复。</p>
+<h3 id="空间放大"><a href="#空间放大" class="headerlink" title="空间放大"></a>空间放大</h3><p>介绍完 LCS 的工作原理后，我们来看下 LCS 是如何解决空间放大的。在上一章中，我们看到空间放大主要由两个原因：1. compaction 过程中，会产生临时空间占用；2. 重复数据分散在不同的 sst 中，导致空间浪费。</p>
+<p>LCS 不会像 STCS 一样产生明显的临时磁盘占用问题。由于 STCS 存在超大 sst 的情况，因此在将这些超大 sst 合并时，会产生更大的文件，这些文件会临时同时存放在磁盘上，导致临时空间放大严重。LCS 不会有超大文件，而且在层与层之间合并时，大体上只选取 11 个 sst 进行 compaction，而这 11 个文件的大小只占整个系统的小部分，因此临时空间放大很小。</p>
+<p>LCS 也不会像 STCS 那样，被重复数据所困扰，原因是 LCS 中除 L0 之外，其他层的数据都是有序不重叠的，因此每层内，各个 sst 间不存在重复数据。下面举例验证下 LCS 确实具备较低的空间放大。</p>
+<p>LCS 最好的情况是，最后一层数据已经被填满。假设最后一层为 L3，一共有 1000 个 sst。那么 L1 和 L2 一共最多 110 个文件。由于每个 sst 基本大小相同，因此，几乎 90% 的数据在 L3。我们直到每层内的数据不会重复，因此最多，L1 和 L2 的数据包含在 L3 中，重复数据导致的空间放大为 1&#x2F;0.9&#x3D;1.11，相比上一章 STCS 8 倍的空间放大好得多。</p>
+<p>然后，也存在比较差的情况，即当最后一层没有填满时，假设 L3 的文件个数为 100 个，L2 中的文件数也是 100 个，最坏情况下，如果 L2 和 L3 的数据相同，则会产生 2 倍的空间放大。但即使是这样，相对 STCS 还是好得多。</p>
+<p>为了能够更直观的对比 LCS 和 STCS，Scylla 官方对 LCS 做和上一章同样的实验。我们来看看实验结果。</p>
+<h4 id="实验-1"><a href="#实验-1" class="headerlink" title="实验 1"></a>实验 1</h4><p><img src="/images/lsm/leveled-compaction-2-exp1.png" alt="leveled-compaction-2-exp1"></p>
+<p>实验 1 是持续写入不同的数据，如上图，可以看到，随着数的不断写入，STCS 会出现较大的毛刺，在最大一次 compaction 时，毛刺达到最巅峰，空间放大达到了 2。而 LCS 的毛刺比较小，空间放大很小，和上面的推导一致。</p>
+<h4 id="实验-2"><a href="#实验-2" class="headerlink" title="实验 2"></a>实验 2</h4><p><img src="/images/lsm/leveled-compaction-3-exp2.png" alt="leveled-compaction-3-exp2"></p>
+<p>实验 2 是一种极端情况，不断写入重复数据，且重复的粒度是 1.2 GB，即所有 sst 中的数据相同。如上图，可以看到 STCS 的空间放大接近 8 倍。而 LCS 的空间放大也超过了 2，原因是这里数据量不能使 LCS 产生 L3，实际只有 L0 和 L1，由于 L1 允许存在多个数据重叠的 sst，因此这里拉高了放大倍数。</p>
+<h3 id="读放大"><a href="#读放大" class="headerlink" title="读放大"></a>读放大</h3><p>读放大指的是，读取一次数据，会产生多次 io，io 次数即为读放大（注：这里是以 io 次数来做的定义，有些文章是以数据量放大倍数来定义，笔者觉得应该将两者结合起来定义更准确）。对于 STCS 来说，由于每层内的 sst 数据可以相互重叠，因此最坏情况下，需要遍历层内所有 sst 才能获取。而对于 LCS 来说，如果数据确定在某层（除 L0）的话，只需要定位到数据所在的 sst，只访问一个 sst 即可，所以，理论上来讲，LCS 的读放大要比 STCS 好得多。</p>
+<h3 id="写入放大"><a href="#写入放大" class="headerlink" title="写入放大"></a>写入放大</h3><p>LCS 解决了空间放大问题，那么是不是就万事大吉了呢？当然不是，LCS 虽然解决了空间放大，但是也引入了另一个问题 – <strong>写入放大</strong>，在上一章中，我们没有仔细讲解写入放大，这里给出写入放大的定义。写入放大指的是实际写入的物理数据量是写入数据量的多倍。写入放大和空间放大容易混淆，写入放大主要指的是 io 写带宽的放大，比如用户实际写入的数据是 1GB，由于某些原因导致实际的写 io 达到了 5 GB，写放大就是 5。</p>
+<p>这里来看个例子，如上一章的实验 1，实际写入的数据是 8.8 GB，但是最后写入放大了 5 倍。我们来看看原因，由于一个 sst 设置的是 100 MB，对于 STCS 来说，L0 的文件大小是 100 MB，写满 4 （默认值）个时，compaction 到 L1，L1 的文件大小便为 400MB，以此类推，最终这 8.8 GB 在 LSM-Tree 上的分布如下：</p>
+<p><img src="/images/lsm/leveled-compaction-4-exp3.png" alt="leveled-compaction-4-exp3"></p>
+<p>可以看到，每份数据的流向为：内存–&gt;L0–&gt;L1–&gt;L2–&gt;L3，还有一份写入到了 WAL。因此同一份数据被写入了 5 次，很明显写入放大为 5。可以对于 STCS 来说，写入放大和层高强相关，而每层的数据量又是呈指数增长的（即第一层最多 400MB，第二层 1600MB，第三层6400MB，一次类推），很明显层高和数据量的关系为对数关系，而写入放大和层高一致，因此写入放大随数据量增长为 O(logN)，N 为数据量大小。</p>
+<p>但是对于 LCS 来说，情况会更糟糕，我们来分析下原因：假设需要将 L1 层的数据量 X compaction 到下一层，STCS 的写如放大为 1。而  LCS 需要将这 X 的数据量和 L1 层 10倍 X 数据量，一共 11 * X 一起 compaction，写入放大为 11，是 STCS 的 11 倍。</p>
+<p>当然情况也不是都这么极端，在数据频繁修改，写数据写入频率较低的场景下，数据往往到不了更深的 Level，大部分 compaction 是 L0 – &gt; L1，由于 L0 和 L1 的数据量没有严格的倍数关系，因此往往 L0 到 L1 的写入放大相对较小。</p>
+<p>总体来说，由于 LCS 为了保证 L0 以下的 Level 内数据不重复，所以在 compaction 时，对导致更高的写入放大。而由于写放大抢占磁盘带宽进而又会影响读性能，因此，在写入（非更新、删除）频繁的场景下，LCS 可能不是最佳的选择，甚至不如 STCS。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>本文介绍了 Leveled Compaction 的工作原理，并从空间放大、读放大、写入放大三个维度分别对比了 LCS 和 STCS 的优缺点。下章将继续介绍另外的 compaction 策略。</p>
+<h3 id="References"><a href="#References" class="headerlink" title="References"></a>References</h3><ul>
+<li><a target="_blank" rel="noopener" href="https://www.scylladb.com/2018/01/31/compaction-series-leveled-compaction/">Scylla’s Compaction Strategies Series: Write Amplification in Leveled Compaction</a></li>
+<li><a target="_blank" rel="noopener" href="https://en.wikipedia.org/wiki/Write_amplification">https://en.wikipedia.org/wiki/Write_amplification</a></li>
+</ul>
+</section>
+    <!-- Tags START -->
+    
+      <div class="tags">
+        <span>Tags:</span>
+        
+  <a href="/tags#compaction" >
+    <span class="tag-code">compaction</span>
+  </a>
+
+      </div>
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+  <div class="nav-container">
+    <!-- reverse left and right to put prev and next in a more logic postition -->
+    
+      <a class="nav-left" href="/2022/01/27/2022-01-27-compaction-size-tiered/">
+        <span class="nav-arrow">← </span>
+        
+          Compaction 策略 - Size-Tiered
+        
+      </a>
+    
+    
+      <a class="nav-right" href="/2022/02/16/2022-02-16-pebble_write_src_s/">
+        
+          Pebble 源码剖析-写入流程(续)
+        
+        <span class="nav-arrow"> →</span>
+      </a>
+    
+  </div>
+
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- Gitment START -->
+      <div id="comments"></div>
+      <!-- Gitment END -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#Leveled-Compaction-Strategy"><span class="toc-nav-text">Leveled Compaction Strategy</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E7%A9%BA%E9%97%B4%E6%94%BE%E5%A4%A7"><span class="toc-nav-text">空间放大</span></a><ol class="toc-nav-child"><li class="toc-nav-item toc-nav-level-4"><a class="toc-nav-link" href="#%E5%AE%9E%E9%AA%8C-1"><span class="toc-nav-text">实验 1</span></a></li><li class="toc-nav-item toc-nav-level-4"><a class="toc-nav-link" href="#%E5%AE%9E%E9%AA%8C-2"><span class="toc-nav-text">实验 2</span></a></li></ol></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E8%AF%BB%E6%94%BE%E5%A4%A7"><span class="toc-nav-text">读放大</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E5%86%99%E5%85%A5%E6%94%BE%E5%A4%A7"><span class="toc-nav-text">写入放大</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-nav-text">总结</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#References"><span class="toc-nav-text">References</span></a></li></ol>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'https://zhenyuxie.github.io/2022/01/30/2022-01-30-compaction-leveled/';
+    var banner = ''
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+    // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', '/css/images/error_icon.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== '/css/images/error_icon.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+  })();
+</script>
+
+
+
+
+  <script>
+    var gitmentConfig = "zhenyuyxie";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "Compaction 策略 - Leveled",
+        owner: "zhenyuyxie",
+        repo: "zhenyuxie.github.io",
+        oauth: {
+          client_id: "1f2036d171d35790250b",
+          client_secret: "d1f9e1ae4ea60f6783f5dace256aec77eed5d99b"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  </script>
+
+
+
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2023 | Proudly powered by <a href="https://hexo.io" target="_blank">Hexo</a>
+    <br>
+    
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdnjs.cloudflare.com/ajax/libs/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      hljs.configure({useBR: true});
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+
+<script src="/js/script.js"></script>
+
+
+  </body>
+</html>

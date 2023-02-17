@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="description">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      lucene 编码技术 - DirectWriter | Debuger
+    
+  </title>
+  <link href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+
+  
+  <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.js"></script>
+  
+  
+    
+<script src="/js/gitment.js"></script>
+
+  
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+  
+  
+    
+<script src="/js/local-search.js"></script>
+
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Debuger</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/tags/" class="item-link">Tags</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/project/" class="item-link">Projects</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+      
+        <li class="menu-item menu-item-search right-list">
+    <a role="button" class="popup-trigger">
+        <i class="fa fa-search fa-fw"></i>
+    </a>
+</li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/tags/" class="menu-link">Tags</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/project/" class="menu-link">Projects</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+    
+      <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+            <span class="search-icon">
+                <i class="fa fa-search"></i>
+            </span>
+            <div class="search-input-container">
+                <input autocomplete="off" autocapitalize="off"
+                    placeholder="Please enter your keyword(s) to search." spellcheck="false"
+                    type="search" class="search-input">
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa fa-times-circle"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+    
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>lucene 编码技术 - DirectWriter</h2>
+  <p class="post-date">2022-12-04</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><p><strong>DirectWriter</strong> 这个类的主要作用是将 long[] 型数据集编码存储到 byte[] 中，其实现充分考虑压缩比和性能因素。</p>
+<h3 id="编码原理"><a href="#编码原理" class="headerlink" title="编码原理"></a>编码原理</h3><p>DirectWriter 使用的是固定位编码方式，即数据集中的所有元数均按照相同的固定位编码到 byte 数组。固定位的值 bitPerValue 只支持下面几种：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">static</span> <span class="keyword">final</span> <span class="type">int</span>[] SUPPORTED_BITS_PER_VALUE =</span><br><span class="line">    <span class="keyword">new</span> <span class="title class_">int</span>[] &#123;<span class="number">1</span>, <span class="number">2</span>, <span class="number">4</span>, <span class="number">8</span>, <span class="number">12</span>, <span class="number">16</span>, <span class="number">20</span>, <span class="number">24</span>, <span class="number">28</span>, <span class="number">32</span>, <span class="number">40</span>, <span class="number">48</span>, <span class="number">56</span>, <span class="number">64</span>&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>至于 bitPerValue 为什么只支持上述 SUPPORTED_BITS_PER_VALUE 中的值，后面会详细分析。</p>
+<h4 id="bitPerValue"><a href="#bitPerValue" class="headerlink" title="bitPerValue"></a>bitPerValue</h4><p>bitPerValue 即每个 value 所需要的 bit 位数，数据集中的所有数值统一按照 bitPerValue 来编码。那么对于一个数据集，如何确定其对应 bitPerValue 的值呢？很明显，bitPerValue 要能够编码数据集中任意值，必须以数据集中最大值来计算位数。举个栗子，有如下 long 数组：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">long</span> []values = &#123;<span class="number">6</span>, <span class="number">2</span>, <span class="number">110</span>&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>我们用二进制来表示每个 value，如下：</p>
+<table>
+<thead>
+<tr>
+<th align="center">value</th>
+<th align="center">binary</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">6</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000<strong>110</strong></td>
+</tr>
+<tr>
+<td align="center">2</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 000000<strong>10</strong></td>
+</tr>
+<tr>
+<td align="center">110</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 0<strong>1101110</strong></td>
+</tr>
+</tbody></table>
+<p>可以看出 6 有三位有效位（去掉前导 0），2 有两位有效位，110 有七位有效位。所以对于该数据集，bitPerValue 应该取值为 7。</p>
+<p>上面计算出了数据集的 bitPerValue，那么又出现一个问题，因为 bitPerValue 的值 7 不在 SUPPORTED_BITS_PER_VALUE 中，那又该如何处理呢？这里结合源码来看看。</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">private</span> <span class="keyword">static</span> <span class="type">int</span> <span class="title function_">roundBits</span><span class="params">(<span class="type">int</span> bitsRequired)</span> &#123;</span><br><span class="line">  <span class="type">int</span> <span class="variable">index</span> <span class="operator">=</span> Arrays.binarySearch(SUPPORTED_BITS_PER_VALUE, bitsRequired);</span><br><span class="line">  <span class="keyword">if</span> (index &lt; <span class="number">0</span>) &#123;</span><br><span class="line">    <span class="keyword">return</span> SUPPORTED_BITS_PER_VALUE[-index - <span class="number">1</span>];</span><br><span class="line">  &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">    <span class="keyword">return</span> bitsRequired;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>DirectWriter 提供了一个方法 roundBits，它可以根据 bitsRequired 的值从 SUPPORTED_BITS_PER_VALUE 中选取合适的值作为最终的 bitsRequired。逻辑很简单，因为 SUPPORTED_BITS_PER_VALUE 是有序数组，可以使用二分查找判断 bitsRequired 是否在数组中，如果在则直接返回 bitsRequired；如果不在，binarySearch 返回的值是 bitsRequired 插入点（第一个大于 bitsRequired 的索引位置）的负值，最终返回的就是第一个大于 bitsRequired 的数组元素。</p>
+<p>所以，这里 bitPerValue 为 7 时，会从 SUPPORTED_BITS_PER_VALUE 中选取 8 作为其最终值。那编码后字节数组如下：</p>
+<figure class="highlight text"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">|-  2   -|-  6   -|- 110  -|</span><br><span class="line">|00000110|00000010|01101110|</span><br></pre></td></tr></table></figure>
+
+<p>数据集编码后占用 3 bytes，而之前占用 24 bytes，压缩了 8 倍。</p>
+<p>上面讲完了 DirectWriter 的编码原理，可以看到其编码原理还是很简单的，比较核心的一点就是 SUPPORTED_BITS_PER_VALUE 的选取，这也是本篇本章讨论的重点，下面会详细分析为什么 bitPerValue 只能选取 SUPPORTED_BITS_PER_VALUE 中的值。</p>
+<h3 id="SUPPORTED-BITS-PER-VALUE"><a href="#SUPPORTED-BITS-PER-VALUE" class="headerlink" title="SUPPORTED_BITS_PER_VALUE"></a>SUPPORTED_BITS_PER_VALUE</h3><p>本节我们举几个栗子来说明 SUPPORTED_BITS_PER_VALUE 的作用。</p>
+<p>栗子1：</p>
+<p>假设有如下数据集1：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">long</span> []values = &#123;<span class="number">117</span>, <span class="number">110</span>, <span class="number">99</span>&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>上述数据的二进制表示如下：</p>
+<table>
+<thead>
+<tr>
+<th align="center">value</th>
+<th align="center">binary</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">117</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 0<strong>1110101</strong></td>
+</tr>
+<tr>
+<td align="center">110</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 0<strong>1101110</strong></td>
+</tr>
+<tr>
+<td align="center">99</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 0<strong>1100011</strong></td>
+</tr>
+</tbody></table>
+<p>最大值为 117，计算出 bitPerValue 为 7。假设我们不用 SUPPORTED_BITS_PER_VALUE，直接按 7 bits 来编码数据集，则编码后的字节数组如下：</p>
+<p><img src="/images/lucene/7bits.png" alt="byte数组1"></p>
+<p>从上图可以看到，除了第一个数只存入到一个字节中，其他两个数都存入到了两个字节。这也就意味着，要操作两个 byte 才能将 110 和 99 写入或读出。如果使用 SUPPORTED_BITS_PER_VALUE，那么将按 8 bits 来编码数据集，编码后的字节数组如下：</p>
+<p><img src="/images/lucene/8bits.png" alt="image-20221203140918053"></p>
+<p>可以看到每个字节存一个数，那么在写入和读取时，都分别操作一个 byte 就可以了，相对上面 7 bits 的方式有更高的性能优势。</p>
+<p>同理，对于 SUPPORTED_BITS_PER_VALUE 中的 16、24、32、40、48、56、64 这些 8 的倍数值，起到的效果和上述类似；1、2、4 这三个值也容易理解，因为它们都能整除 8 ，所以一个 byte 可以存放整数个位数为 1 或 2 或 4 的值，不会出现跨 byte 的情况 。但是对于 12、20、28 这三个值如何理解呢？为了解释这个问题，我们再举一个栗子：</p>
+<p>假设有数据集2：</p>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="type">long</span> []values = &#123;<span class="number">309</span>, <span class="number">36</span>, <span class="number">293</span>, <span class="number">108</span>&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>上述数据的二进制表示如下：</p>
+<table>
+<thead>
+<tr>
+<th align="center">value</th>
+<th align="center">binary</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">309</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 0000000<strong>1 00110101</strong></td>
+</tr>
+<tr>
+<td align="center">36</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 00<strong>100100</strong></td>
+</tr>
+<tr>
+<td align="center">293</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 0000000<strong>1 00100101</strong></td>
+</tr>
+<tr>
+<td align="center">108</td>
+<td align="center">00000000 00000000 00000000 00000000 00000000 00000000 00000000 0<strong>1101100</strong></td>
+</tr>
+</tbody></table>
+<p>最大值 309，bitPerValue 为 9，如果我们按 9 bits 来编码数据集，则编码后的字节数组如下：</p>
+<p><img src="/images/lucene/9bits.png" alt="image-20221203144859417"></p>
+<p>由于 9 bits 大于一个字节，每个数值都必须用 2 个 byte 来存储，跨字节这个问题无法避免。我们再观察上面几个数的存储还有其他弊端没？可以看到，除了第一个数的起始偏移是按字节对齐的，其他数的起始偏移都没按字节对齐，这就意味着如果要读取这些数，首先要定位到起始偏移所在的 byte，然后再定位 byte 内的偏移，因此定位起始偏移的开销相对较大。</p>
+<p>既然这样，我们直接用 16 bits 来编码是否更好呢？用 16 bits 来存储确实性能会更好，因为计算起始偏移的开销更低了。但是压缩率又变差了，16 bits 编码需要 8 bytes，而 9 bits 编码只需要 5 bytes。 那我们有没有折中的方案呢，既能够取得较好的压缩率，又有很好的读写性能。</p>
+<p>我们看看使用 SUPPORTED_BITS_PER_VALUE 后的效果，如果是 SUPPORTED_BITS_PER_VALUE，那么便会用 12 bits 来编码，编码后的 byte 数组如下：</p>
+<p><img src="/images/lucene/12bits.png" alt="image-20221203163004540"></p>
+<p>从上图可以看出，使用 12 bits 编码后，每两个数中有一个数计算起始偏移时需要计算 byte 内偏移，而使用 9 bits 编码是每 8 个数中有 7   个需要计算 byte 内偏移。所以相对 9 bits 编码在这块的开销比为 1&#x2F;2 : 7&#x2F;8 &#x3D; 4 : 7，而压缩比为 5 : 6。因此使用 12 bits 编码既能取得接近 9 bits 相近的压缩率，还能有更好的性能。</p>
+<p>同理，20、28 bits 编码解决的问题和 12 bits 类似，这里不在赘述。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>本文结合源码和例子详细分析了 DirectWriter 的编码原理，特别对 SUPPORTED_BITS_PER_VALUE 的作用进行了深入分析。DirectWriter 在 lucene 中多处被使用，大家如果想了解更细节地实现可以查看相关源码。</p>
+</section>
+    <!-- Tags START -->
+    
+      <div class="tags">
+        <span>Tags:</span>
+        
+  <a href="/tags#lucene" >
+    <span class="tag-code">lucene</span>
+  </a>
+
+      </div>
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+  <div class="nav-container">
+    <!-- reverse left and right to put prev and next in a more logic postition -->
+    
+      <a class="nav-left" href="/2022/02/26/2022-02-16-pebble_skiplist/">
+        <span class="nav-arrow">← </span>
+        
+          Pebble 源码剖析 - Skiplist
+        
+      </a>
+    
+    
+      <a class="nav-right" href="/2022/12/18/2022-12-18-lucene-DirectMonotonicWriter/">
+        
+          lucene 编码技术 - DirectMonotonicWriter
+        
+        <span class="nav-arrow"> →</span>
+      </a>
+    
+  </div>
+
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- Gitment START -->
+      <div id="comments"></div>
+      <!-- Gitment END -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E7%BC%96%E7%A0%81%E5%8E%9F%E7%90%86"><span class="toc-nav-text">编码原理</span></a><ol class="toc-nav-child"><li class="toc-nav-item toc-nav-level-4"><a class="toc-nav-link" href="#bitPerValue"><span class="toc-nav-text">bitPerValue</span></a></li></ol></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#SUPPORTED-BITS-PER-VALUE"><span class="toc-nav-text">SUPPORTED_BITS_PER_VALUE</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-nav-text">总结</span></a></li></ol>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'https://zhenyuxie.github.io/2022/12/04/2022-12-04-lucene-DirectWriter/';
+    var banner = ''
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+    // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', '/css/images/error_icon.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== '/css/images/error_icon.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+  })();
+</script>
+
+
+
+
+  <script>
+    var gitmentConfig = "zhenyuyxie";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "lucene 编码技术 - DirectWriter",
+        owner: "zhenyuyxie",
+        repo: "zhenyuxie.github.io",
+        oauth: {
+          client_id: "1f2036d171d35790250b",
+          client_secret: "d1f9e1ae4ea60f6783f5dace256aec77eed5d99b"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  </script>
+
+
+
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2023 | Proudly powered by <a href="https://hexo.io" target="_blank">Hexo</a>
+    <br>
+    
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdnjs.cloudflare.com/ajax/libs/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      hljs.configure({useBR: true});
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+
+<script src="/js/script.js"></script>
+
+
+  </body>
+</html>

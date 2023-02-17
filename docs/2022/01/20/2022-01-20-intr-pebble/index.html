@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="description">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      初识Pebble | Debuger
+    
+  </title>
+  <link href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+
+  
+  <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.js"></script>
+  
+  
+    
+<script src="/js/gitment.js"></script>
+
+  
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+  
+  
+    
+<script src="/js/local-search.js"></script>
+
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Debuger</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/tags/" class="item-link">Tags</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/project/" class="item-link">Projects</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+      
+        <li class="menu-item menu-item-search right-list">
+    <a role="button" class="popup-trigger">
+        <i class="fa fa-search fa-fw"></i>
+    </a>
+</li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/tags/" class="menu-link">Tags</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/project/" class="menu-link">Projects</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+    
+      <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+            <span class="search-icon">
+                <i class="fa fa-search"></i>
+            </span>
+            <div class="search-input-container">
+                <input autocomplete="off" autocapitalize="off"
+                    placeholder="Please enter your keyword(s) to search." spellcheck="false"
+                    type="search" class="search-input">
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa fa-times-circle"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+    
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>初识Pebble</h2>
+  <p class="post-date">2022-01-20</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><h3 id="Pebble-来源"><a href="#Pebble-来源" class="headerlink" title="Pebble 来源"></a>Pebble 来源</h3><p>Pebble 是 Cockroach  参考 RocksDB 并用 Go 语言开发的高性能 KV 存储引擎。一直以来 CockroachDB 以 RocksDB 作为底层存储引擎，虽然 RocksDB 是一款非常优秀的 KV 内嵌式数据库，但是在 Cockroach 的使用过程中，也遇到了一些使用上的缺陷及性能问题（参考：<a target="_blank" rel="noopener" href="https://www.cockroachlabs.com/blog/pebble-rocksdb-kv-store/">Cockroach 官方文档</a>）。由于存储引擎是数据库中非常核心的组件，为了更好的把控核心技术，Cockroach 打算自研底层存储引擎，于是乎，Pebble 呼之欲出。</p>
+<h3 id="Pebble-功能点"><a href="#Pebble-功能点" class="headerlink" title="Pebble 功能点"></a>Pebble 功能点</h3><p>Pebble 在功能及存储结构上参考了 RocksDB，但是并未完全实现 RocksDB 的功能点，从功能上来看 Pebble 相当于 RocksDB 的子集。Pebble 具备的功能点如下（来源于<a target="_blank" rel="noopener" href="https://github.com/cockroachdb/pebble">官方wiki</a>）：</p>
+<ul>
+<li>Block-based tables</li>
+<li>Checkpoints</li>
+<li>Indexed batches</li>
+<li>Iterator options (lower&#x2F;upper bound, table filter)</li>
+<li>Level-based compaction</li>
+<li>Manual compaction</li>
+<li>Merge operator</li>
+<li>Prefix bloom filters</li>
+<li>Prefix iteration</li>
+<li>Range deletion tombstones</li>
+<li>Reverse iteration</li>
+<li>SSTable ingestion</li>
+<li>Single delete</li>
+<li>Snapshots</li>
+<li>Table-level bloom filters</li>
+</ul>
+<p>RocksDB 具备但是 Pebble 不具备的功能点：</p>
+<ul>
+<li>Backups</li>
+<li>Column families</li>
+<li>Delete files in range</li>
+<li>FIFO compaction style</li>
+<li>Forward iterator &#x2F; tailing iterator</li>
+<li>Hash table format</li>
+<li>Memtable bloom filter</li>
+<li>Persistent cache</li>
+<li>Pin iterator key &#x2F; value</li>
+<li>Plain table format</li>
+<li>SSTable ingest-behind</li>
+<li>Sub-compactions</li>
+<li>Transactions</li>
+<li>Universal compaction style</li>
+</ul>
+<h3 id="Pebble-存储结构"><a href="#Pebble-存储结构" class="headerlink" title="Pebble 存储结构"></a>Pebble 存储结构</h3><p>Pebble 和 RocksDB 一样底层的数据存储结构使用的是经典的分层结构的 LSM-Tree。熟悉数据库的同学应该比较清楚，在 NoSql 领域，LSM 被广泛使用，如 HBase、LevelDB、InfluxDB、Elasticsearch 等都使用类似的结构，可见，该结构在工程实践上还是非常靠谱的。下面简单介绍下 LSM。</p>
+<p><img src="/images/pebble/LSM.png" alt="LSM 结构"></p>
+<p>如上图，LSM 的结构主要由内存中的 Memtable（含 Immutable）和磁盘中的 sstable 构成，另外，磁盘上还有其他三种比较重要的文件：Wal（预写日志）、Mainifest（sst 的元数据，记录 sst 集合的状态变化）、Current（指向当前版本的 Mainifest）。数据写入时，首先写到 Wal，保证数据的可靠性；然后再写 Memtable，待 Memtable 写满后转化为只读的 Immutable Memtable，等满足一定条件后刷到磁盘形成 sst 文件。这是 LSM 构成的大体流程，这里不具体展开，详细的读写流程后面会根据源码深入剖析。</p>
+<h3 id="性能对比"><a href="#性能对比" class="headerlink" title="性能对比"></a>性能对比</h3><p>Pebble 是受 RocksDB 启发的 KV 存储引擎，作为后起之秀，具备极高的性能。官方利用 YCSB （由雅虎开发的通用数据库测试工具）对Pebble 和 RocksDB 进行了测试对比，测试了六种工作负载：工作负载 A 是 50％ reads 和 50％ updates 混合；工作负载 B 是 95％ reads 和 5％ updates 混合；工作负载 C 是 100％ reads；工作负载 D 是 95％ 的reads 和 5％ 的 inserts。工作负载 E 是 95％ scans 和 5％ inserts；工作负载 F 是 50％ 的 reads 和 50％ 的 read-modify-writes.。Pebble 和 RocksDB 的配置选项类似。测试结果如下（来源<a target="_blank" rel="noopener" href="https://www.cockroachlabs.com/blog/pebble-rocksdb-kv-store/">官方文档</a>）：</p>
+<p><img src="/images/pebble/ycsb-pebble-rocksdb.png" alt="ycsb-pebble-rocksdb"></p>
+<p>从上面的结果可以看出，pebble 的表现非常出色，即使和性能极致的 RocksDB 对比也不逊色。笔者目前尚未对最新版的 Pebble 和 RocksDB 做过测试，后面会将最新版测试结果附上。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>本章主要介绍了 Pebble 诞生的来源，并介绍了 Pebble 具备的功能点，然后大致讲解了 LSM 的整体结构，并未详细解决其中的技术细节，后面会根据 Pebble 源码针对每块技术点详细展开。最后给大家附上了官方的测试结果，整体看来 Pebble 表现不俗，值得我们继续深入学习和探索。</p>
+</section>
+    <!-- Tags START -->
+    
+      <div class="tags">
+        <span>Tags:</span>
+        
+  <a href="/tags#Pebble" >
+    <span class="tag-code">Pebble</span>
+  </a>
+
+      </div>
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+  <div class="nav-container">
+    <!-- reverse left and right to put prev and next in a more logic postition -->
+    
+    
+      <a class="nav-right" href="/2022/01/24/2022-01-24-pebble_write_src/">
+        
+          Pebble 源码剖析-写入流程
+        
+        <span class="nav-arrow"> →</span>
+      </a>
+    
+  </div>
+
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- Gitment START -->
+      <div id="comments"></div>
+      <!-- Gitment END -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#Pebble-%E6%9D%A5%E6%BA%90"><span class="toc-nav-text">Pebble 来源</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#Pebble-%E5%8A%9F%E8%83%BD%E7%82%B9"><span class="toc-nav-text">Pebble 功能点</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#Pebble-%E5%AD%98%E5%82%A8%E7%BB%93%E6%9E%84"><span class="toc-nav-text">Pebble 存储结构</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E6%80%A7%E8%83%BD%E5%AF%B9%E6%AF%94"><span class="toc-nav-text">性能对比</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-nav-text">总结</span></a></li></ol>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'https://zhenyuxie.github.io/2022/01/20/2022-01-20-intr-pebble/';
+    var banner = ''
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+    // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', '/css/images/error_icon.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== '/css/images/error_icon.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+  })();
+</script>
+
+
+
+
+  <script>
+    var gitmentConfig = "zhenyuyxie";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "初识Pebble",
+        owner: "zhenyuyxie",
+        repo: "zhenyuxie.github.io",
+        oauth: {
+          client_id: "1f2036d171d35790250b",
+          client_secret: "d1f9e1ae4ea60f6783f5dace256aec77eed5d99b"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  </script>
+
+
+
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2023 | Proudly powered by <a href="https://hexo.io" target="_blank">Hexo</a>
+    <br>
+    
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdnjs.cloudflare.com/ajax/libs/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      hljs.configure({useBR: true});
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+
+<script src="/js/script.js"></script>
+
+
+  </body>
+</html>

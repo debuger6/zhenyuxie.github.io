@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html>
+  <head>
+  <meta http-equiv="content-type" content="text/html; charset=utf-8">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport">
+  <meta name="description" content="description">
+  <meta name="keyword" content="hexo-theme, vuejs">
+  
+    <link rel="shortcut icon" href="/css/images/logo.png">
+  
+  <title>
+    
+      Pebble 源码剖析-写入流程(续) | Debuger
+    
+  </title>
+  <link href="//cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.css" rel="stylesheet">
+  <link href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/tomorrow.min.css" rel="stylesheet">
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/css/plugins/gitment.css">
+
+  
+  <script src="//cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/geopattern/1.2.3/js/geopattern.min.js"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/nprogress/0.2.0/nprogress.min.js"></script>
+  
+  
+    
+<script src="/js/gitment.js"></script>
+
+  
+  
+  
+    <!-- MathJax support START -->
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Config({
+        tex2jax: {
+          inlineMath: [ ['$','$'], ["\\(","\\)"]  ],
+          processEscapes: true,
+          skipTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+        }
+      });
+    </script>
+
+    <script type="text/x-mathjax-config">
+      MathJax.Hub.Queue(function() {
+        var all = MathJax.Hub.getAllJax(), i;
+        for (i=0; i < all.length; i += 1) {
+          all[i].SourceElement().parentNode.className += ' has-jax';
+        }
+      });
+    </script>
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+    <!-- MathJax support END -->
+  
+
+
+  
+  
+    
+<script src="/js/local-search.js"></script>
+
+
+<meta name="generator" content="Hexo 6.3.0"></head>
+<div class="wechat-share">
+  <img src="/css/images/logo.png" />
+</div>
+  <body>
+    <header class="header fixed-header">
+  <div class="header-container">
+    <a class="home-link" href="/">
+      <div class="logo"></div>
+      <span>Debuger</span>
+    </a>
+    <ul class="right-list">
+      
+        <li class="list-item">
+          
+            <a href="/" class="item-link">Home</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/tags/" class="item-link">Tags</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/archives/" class="item-link">Archives</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/project/" class="item-link">Projects</a>
+          
+        </li>
+      
+        <li class="list-item">
+          
+            <a href="/about/" class="item-link">About</a>
+          
+        </li>
+      
+      
+        <li class="menu-item menu-item-search right-list">
+    <a role="button" class="popup-trigger">
+        <i class="fa fa-search fa-fw"></i>
+    </a>
+</li>
+      
+    </ul>
+    <div class="menu">
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+      <span class="icon-bar"></span>
+    </div>
+    <div class="menu-mask">
+      <ul class="menu-list">
+        
+          <li class="menu-item">
+            
+              <a href="/" class="menu-link">Home</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/tags/" class="menu-link">Tags</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/archives/" class="menu-link">Archives</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/project/" class="menu-link">Projects</a>
+            
+          </li>
+        
+          <li class="menu-item">
+            
+              <a href="/about/" class="menu-link">About</a>
+            
+          </li>
+        
+      </ul>
+    </div>
+    
+      <div class="search-pop-overlay">
+    <div class="popup search-popup">
+        <div class="search-header">
+            <span class="search-icon">
+                <i class="fa fa-search"></i>
+            </span>
+            <div class="search-input-container">
+                <input autocomplete="off" autocapitalize="off"
+                    placeholder="Please enter your keyword(s) to search." spellcheck="false"
+                    type="search" class="search-input">
+            </div>
+            <span class="popup-btn-close">
+                <i class="fa fa-times-circle"></i>
+            </span>
+        </div>
+        <div id="search-result">
+            <div id="no-result">
+                <i class="fa fa-spinner fa-pulse fa-5x fa-fw"></i>
+            </div>
+        </div>
+    </div>
+</div>
+    
+  </div>
+</header>
+
+    <div id="article-banner">
+  <h2>Pebble 源码剖析-写入流程(续)</h2>
+  <p class="post-date">2022-02-16</p>
+  <div class="arrow-down">
+    <a href="javascript:;"></a>
+  </div>
+</div>
+<main class="app-body flex-box">
+  <!-- Article START -->
+  <article class="post-article">
+    <section class="markdown-content"><p>上一章，分析了 Pebble 写入的整体流程，并深入分析了 Pipeline 的三个执行阶段。但还未对 large batch 和 makeRoomForWrite 具体执行逻辑进行分析，本章将对这两点内容展开讨论。</p>
+<h3 id="Large-Batch"><a href="#Large-Batch" class="headerlink" title="Large Batch"></a>Large Batch</h3><p>这里首先思考两个问题：为什么需要区分 large batch，为什么需要对 large batch 特殊处理？笔者最初以比较疑惑，带着疑问向社区提了 <a target="_blank" rel="noopener" href="https://github.com/cockroachdb/pebble/issues/1464">issue</a> ，大家可以看下官方开发人员的回答。</p>
+<p>回顾下上一章 DB.Apply 方法部分代码：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">if</span> <span class="type">int</span>(batch.memTableSize) &gt;= d.largeBatchThreshold &#123;</span><br><span class="line">	batch.flushable = newFlushableBatch(batch, d.opts.Comparer)</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>这里会判断 batch 的大小，如果其超过设定的阈值，则将该 batch 当做 large batch 处理。这里会调用 newFlushableBatch 方法，根据 batch 生成一个 flushable（可以理解成 immutable memtable）。下面看一下 <strong>newFlushableBatch</strong> 具体的逻辑：</p>
+<blockquote>
+<p>该函数代码比较冗长，这里省略部分分支逻辑，保留主要逻辑</p>
+</blockquote>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="title">newFlushableBatch</span><span class="params">(batch *Batch, comparer *Comparer)</span></span> *flushableBatch &#123;</span><br><span class="line">	b := &amp;flushableBatch&#123;</span><br><span class="line">		data:      batch.data,</span><br><span class="line">		cmp:       comparer.Compare,</span><br><span class="line">		formatKey: comparer.FormatKey,</span><br><span class="line">		offsets:   <span class="built_in">make</span>([]flushableBatchEntry, <span class="number">0</span>, batch.Count()),</span><br><span class="line">	&#125;</span><br><span class="line">	</span><br><span class="line">	<span class="keyword">if</span> <span class="built_in">len</span>(b.data) &gt; batchHeaderLen &#123;</span><br><span class="line">		<span class="comment">// Non-empty batch.</span></span><br><span class="line">		<span class="keyword">var</span> index <span class="type">uint32</span></span><br><span class="line">    <span class="comment">// 迭代 batch</span></span><br><span class="line">		<span class="keyword">for</span> iter := BatchReader(b.data[batchHeaderLen:]); <span class="built_in">len</span>(iter) &gt; <span class="number">0</span>; index++ &#123;</span><br><span class="line">			offset := <span class="type">uintptr</span>(unsafe.Pointer(&amp;iter[<span class="number">0</span>])) - <span class="type">uintptr</span>(unsafe.Pointer(&amp;b.data[<span class="number">0</span>]))</span><br><span class="line">      <span class="comment">// 解析当前 batch record</span></span><br><span class="line">			kind, key, _, ok := iter.Next()</span><br><span class="line">			<span class="keyword">if</span> !ok &#123;</span><br><span class="line">				<span class="keyword">break</span></span><br><span class="line">			&#125;</span><br><span class="line">			entry := flushableBatchEntry&#123;</span><br><span class="line">				offset: <span class="type">uint32</span>(offset),</span><br><span class="line">				index:  <span class="type">uint32</span>(index),</span><br><span class="line">			&#125;</span><br><span class="line">      </span><br><span class="line">			entry.keyStart = <span class="type">uint32</span>(<span class="type">uintptr</span>(unsafe.Pointer(&amp;key[<span class="number">0</span>])) -</span><br><span class="line">				<span class="type">uintptr</span>(unsafe.Pointer(&amp;b.data[<span class="number">0</span>])))</span><br><span class="line">			entry.keyEnd = entry.keyStart + keySize</span><br><span class="line">			b.offsets = <span class="built_in">append</span>(b.offsets, entry)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line"></span><br><span class="line">	pointOffsets := b.offsets</span><br><span class="line">	sort.Sort(b)</span><br><span class="line">	</span><br><span class="line">	<span class="keyword">return</span> b</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>首先，初始 flushableBatch <strong>b <strong>，</strong>b</strong> 中包含了原始 batch 的数据；然后迭代 batch，解析 batch 的每个 record 生成 flushableBatchEntry，entry 主要包含 record 在 batch 中的偏移 <em>offset</em>，record 是 batch 索引号 <em>index</em>（用于计算当前 record 的 seqNum），record 的原始 key 在 batch 中的起始偏移和终止位置。可以看到 entry 主要记录的是 record 相关的位置和偏移信息，根据这些信息可以得到 record 中的 key 和 value。将 entry 加入到 <strong>b</strong> 的 offsets 中，迭代完毕后，<strong>b</strong> 便拥有了原始 batch 中所有 record 的位置和偏移信息。</p>
+<p>最后对  <strong>b</strong> 进行排序，排序规则参考如下函数：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(b *flushableBatch)</span></span> Less(i, j <span class="type">int</span>) <span class="type">bool</span> &#123;</span><br><span class="line">	ei := &amp;b.offsets[i]</span><br><span class="line">	ej := &amp;b.offsets[j]</span><br><span class="line">	ki := b.data[ei.keyStart:ei.keyEnd]</span><br><span class="line">	kj := b.data[ej.keyStart:ej.keyEnd]</span><br><span class="line">	<span class="keyword">switch</span> c := b.cmp(ki, kj); &#123;</span><br><span class="line">	<span class="keyword">case</span> c &lt; <span class="number">0</span>:</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">true</span></span><br><span class="line">	<span class="keyword">case</span> c &gt; <span class="number">0</span>:</span><br><span class="line">		<span class="keyword">return</span> <span class="literal">false</span></span><br><span class="line">	<span class="keyword">default</span>:</span><br><span class="line">		<span class="keyword">return</span> ei.offset &gt; ej.offset</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到 flushableBatch 的排序规则：比较 entry 间 key 的大小，比较函数默认为 bytes.Compare，如果 key 相同则偏移位置大的 key 排前面（偏移越大说明 key 是后写入，代表值越新）。</p>
+<p>好的，到这里 flushableBatch 便准备完毕了，并会赋值给 batch 的 flushable。再回顾 DB.commitWrite，上一章把方法中 large batch 相关的逻辑省略了，如下：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line">repr := b.Repr()</span><br><span class="line"><span class="keyword">if</span> b.flushable != <span class="literal">nil</span> &#123;</span><br><span class="line">	b.flushable.setSeqNum(b.SeqNum())</span><br><span class="line">	<span class="keyword">if</span> !d.opts.DisableWAL &#123;</span><br><span class="line">		<span class="keyword">var</span> err <span class="type">error</span></span><br><span class="line">		size, err = d.mu.log.SyncRecord(repr, syncWG, syncErr)</span><br><span class="line">		<span class="keyword">if</span> err != <span class="literal">nil</span> &#123;</span><br><span class="line">			<span class="built_in">panic</span>(err)</span><br><span class="line">		&#125;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>接着之前的逻辑，这里 batch 的 flushable 不为空，如果启用了 wal，这些会先写 wal，而后再调用 makeRoomForWrite。这里和普通 batch 的处理顺序相反，后面会做解释。这里先看 <strong>makeRoomForWrite</strong>，该方法主要的逻辑有如下几点：</p>
+<ul>
+<li>当前 memtable 空间足够，直接写入</li>
+<li>当前 memtable 空间不够，将当前 memtable 切换为 immutable memtable，然后将当前 memtable 刷盘</li>
+<li>batch 为空或者为 large batch 则直接切换当前 memtable（注：这两种视为非常规 batch）</li>
+<li>如果切换 memtable 则同时会生成新的 log 文件</li>
+</ul>
+<p>上述为 makeRoomForWrite 的主要逻辑，还要一些分支逻辑需要结合代码来看看（log 文件相关的代码省略）：</p>
+<figure class="highlight go"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br><span class="line">49</span><br><span class="line">50</span><br><span class="line">51</span><br><span class="line">52</span><br><span class="line">53</span><br><span class="line">54</span><br><span class="line">55</span><br><span class="line">56</span><br><span class="line">57</span><br><span class="line">58</span><br><span class="line">59</span><br><span class="line">60</span><br><span class="line">61</span><br><span class="line">62</span><br><span class="line">63</span><br><span class="line">64</span><br><span class="line">65</span><br><span class="line">66</span><br><span class="line">67</span><br><span class="line">68</span><br><span class="line">69</span><br><span class="line">70</span><br><span class="line">71</span><br><span class="line">72</span><br><span class="line">73</span><br><span class="line">74</span><br><span class="line">75</span><br><span class="line">76</span><br><span class="line">77</span><br><span class="line">78</span><br><span class="line">79</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">func</span> <span class="params">(d *DB)</span></span> makeRoomForWrite(b *Batch) <span class="type">error</span> &#123;</span><br><span class="line">	force := b == <span class="literal">nil</span> || b.flushable != <span class="literal">nil</span></span><br><span class="line">	stalled := <span class="literal">false</span></span><br><span class="line">	<span class="keyword">for</span> &#123;</span><br><span class="line">		<span class="comment">// 检查当前 memtable 是否正在切换中</span></span><br><span class="line">		<span class="keyword">if</span> d.mu.mem.switching &#123;</span><br><span class="line">			d.mu.mem.cond.Wait()</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// batch 为正常小数据量时，进入 prepare</span></span><br><span class="line">		<span class="keyword">if</span> b != <span class="literal">nil</span> &amp;&amp; b.flushable == <span class="literal">nil</span> &#123;</span><br><span class="line">			err := d.mu.mem.mutable.prepare(b)</span><br><span class="line">			<span class="keyword">if</span> err != arenaskl.ErrArenaFull &#123;</span><br><span class="line">				<span class="keyword">if</span> stalled &#123;</span><br><span class="line">					d.opts.EventListener.WriteStallEnd()</span><br><span class="line">				&#125;</span><br><span class="line">				<span class="keyword">return</span> err</span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		<span class="comment">// force || err == ErrArenaFull, so we need to rotate the current memtable.</span></span><br><span class="line">		&#123;</span><br><span class="line">			<span class="keyword">var</span> size <span class="type">uint64</span></span><br><span class="line">			<span class="comment">// 计算所有 memtable 大小</span></span><br><span class="line">			<span class="keyword">for</span> i := <span class="keyword">range</span> d.mu.mem.queue &#123;</span><br><span class="line">				size += d.mu.mem.queue[i].totalBytes()</span><br><span class="line">			&#125;</span><br><span class="line">			<span class="comment">// 总大小超过阈值，需要阻塞写，等待 compact 完成</span></span><br><span class="line">			<span class="keyword">if</span> size &gt;= <span class="type">uint64</span>(d.opts.MemTableStopWritesThreshold)*<span class="type">uint64</span>(d.opts.MemTableSize) &#123;</span><br><span class="line">				<span class="keyword">if</span> !stalled &#123;</span><br><span class="line">					stalled = <span class="literal">true</span></span><br><span class="line">					d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo&#123;</span><br><span class="line">						Reason: <span class="string">&quot;memtable count limit reached&quot;</span>,</span><br><span class="line">					&#125;)</span><br><span class="line">				&#125;</span><br><span class="line">				d.mu.compact.cond.Wait()</span><br><span class="line">				<span class="keyword">continue</span></span><br><span class="line">			&#125;</span><br><span class="line">		&#125;</span><br><span class="line">		l0ReadAmp := d.mu.versions.currentVersion().L0Sublevels.ReadAmplification()</span><br><span class="line">		<span class="comment">// l0 读放大超过阈值需要阻塞等待</span></span><br><span class="line">		<span class="keyword">if</span> l0ReadAmp &gt;= d.opts.L0StopWritesThreshold &#123;</span><br><span class="line">			<span class="comment">// There are too many level-0 files, so we wait.</span></span><br><span class="line">			<span class="keyword">if</span> !stalled &#123;</span><br><span class="line">				stalled = <span class="literal">true</span></span><br><span class="line">				d.opts.EventListener.WriteStallBegin(WriteStallBeginInfo&#123;</span><br><span class="line">					Reason: <span class="string">&quot;L0 file count limit exceeded&quot;</span>,</span><br><span class="line">				&#125;)</span><br><span class="line">			&#125;</span><br><span class="line">			d.mu.compact.cond.Wait()</span><br><span class="line">			<span class="keyword">continue</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">if</span> b != <span class="literal">nil</span> &amp;&amp; b.flushable != <span class="literal">nil</span> &#123;</span><br><span class="line">			entry := d.newFlushableEntry(b.flushable, imm.logNum, b.SeqNum())</span><br><span class="line">			entry.releaseMemAccounting = d.opts.Cache.Reserve(<span class="type">int</span>(b.flushable.totalBytes()))</span><br><span class="line">			d.mu.mem.queue = <span class="built_in">append</span>(d.mu.mem.queue, entry)</span><br><span class="line">			imm.logNum = <span class="number">0</span></span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">var</span> logSeqNum <span class="type">uint64</span></span><br><span class="line">		<span class="keyword">if</span> b != <span class="literal">nil</span> &#123;</span><br><span class="line">			logSeqNum = b.SeqNum()</span><br><span class="line">			<span class="keyword">if</span> b.flushable != <span class="literal">nil</span> &#123;</span><br><span class="line">				logSeqNum += <span class="type">uint64</span>(b.Count())</span><br><span class="line">			&#125;</span><br><span class="line">		&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">			logSeqNum = atomic.LoadUint64(&amp;d.mu.versions.atomic.logSeqNum)</span><br><span class="line">		&#125;</span><br><span class="line"></span><br><span class="line">		<span class="keyword">var</span> entry *flushableEntry</span><br><span class="line">		d.mu.mem.mutable, entry = d.newMemTable(newLogNum, logSeqNum)</span><br><span class="line">		d.mu.mem.queue = <span class="built_in">append</span>(d.mu.mem.queue, entry)</span><br><span class="line">		d.updateReadStateLocked(<span class="literal">nil</span>)</span><br><span class="line">		<span class="keyword">if</span> immMem.writerUnref() &#123;</span><br><span class="line">			d.maybeScheduleFlush()</span><br><span class="line">		&#125;</span><br><span class="line">		force = <span class="literal">false</span></span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>可以看到，这里有两种情况会强制切换 memtable，一种是 batch 为空，代表手动 flush，另一种是 batch 为 large batch。下面循环中，首先检查当前 memtable 是否正在切换中，如果是则等待当前 memtable 切换完毕；</p>
+<p>随后判断当前 batch 是否为常规 batch，如果为常规 batch ，则调用 memtable 的 prepare 函数判断当前 batch 空间是否足够，如果足够则直接返回，否则返回  ErrArenaFull，代表空间已满；</p>
+<p>下面进入切换 memtable 的逻辑，到这里可以看出，有三种情况会切换 memtable：1. 手动 flush，2. Large batch 3. 当前 memtable 已满；接下来会计算当前内存所有 memtable 的空间大小，如果总大小超过停写阈值，则会阻塞写，等待 compact 完成；再接下来会判断  L0 的读放大是否超过阈值，如果超过则阻塞写，等待 compact 完成；</p>
+<p>如果是 large batch，则会生成 flushableEntry，然后添加到 immutable queue 中；最后会将当前 memtable 切换为 immutable 并加入到 queue 中。最后将 immutable 解引用，并调用 maybeScheduleFlush 触发写入操作。</p>
+<h3 id="思考"><a href="#思考" class="headerlink" title="思考"></a>思考</h3><p>这里思考几个问题：</p>
+<ol>
+<li>为什么需要设计 large batch</li>
+<li>large batch 的日志写入为什么在 makeRoomForWrite 之前（和普通 batch 对比）</li>
+<li>large batch 为什么会触发 memtable 切换</li>
+</ol>
+<p>这几个问题的解答可以参考笔者向官方提的 <a target="_blank" rel="noopener" href="https://github.com/cockroachdb/pebble/issues/1464">issue</a> 以及<a target="_blank" rel="noopener" href="https://github.com/cockroachdb/pebble/blob/master/docs/rocksdb.md#large-batches">官方文档</a>对 large batch 来源说明。这里笔者参考官方的回答及自己的理解，对上述问题进行解答下。</p>
+<p>第一个问题，根据官方描述，pebble 的 memtable 实际上是一个预分配的固定内存大小的 skiplist，因此当 batch 超过 memtable 内存大小时，无法扩容，只能将 large batch 转变为 flushable 来处理，这样间接解决 memtable 内存无法容纳 large batch 的问题。再一个原因是，如果当前 large batch 过大即使未超过 memtable 内存，将 large batch 写入 memtable，那么很快就会导致 memtable full，触发 flush，既然 large batch 很快便会触发 flush，那么不如直接将其转变为 flushable，这样也避免了 large batch 到 memtable 的拷贝开销。</p>
+<p>第二个问题，large batch 转变为 flushable 后，在 makeRoomForWrite 中会将其当做 immutable 加入到 immutable queue 中，相当于数据写入内存中，同时可能触发 flush，因此，在数据写入内存前应该先写 log，也就是日志的写入需要在 makeRoomForWrite 前。这个逻辑和普通的 batch 处理不同，可以参考上一章。</p>
+<p>第三个问题，既然 large batch 并未写入到当前的 memtable 中，为什么也会将当前的 memtable 切换为 immutable？这个问题要和第二个问题结合起来看，从第二个问题可以知道，large batch 和当前 memtable 其实是共用的同一个 wal，在 makeRoomForWrite 中可能会触发 large batch 的 flushable 刷盘，刷盘后其对应的 wal 理应被删除以避免日志 replay 的开销，因此 memtable 也会被牵连一起刷盘。</p>
+<h3 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h3><p>本章主要讲解了写入流程中 pebble 对 large batch 的特殊处理方式，同时分析了 makeRoomForWrite 的处理逻辑。最后分析了为什么会产生 large batch 及针对 large batch 特殊处理的原因。</p>
+</section>
+    <!-- Tags START -->
+    
+      <div class="tags">
+        <span>Tags:</span>
+        
+  <a href="/tags#Pebble" >
+    <span class="tag-code">Pebble</span>
+  </a>
+
+      </div>
+    
+    <!-- Tags END -->
+    <!-- NAV START -->
+    
+  <div class="nav-container">
+    <!-- reverse left and right to put prev and next in a more logic postition -->
+    
+      <a class="nav-left" href="/2022/01/30/2022-01-30-compaction-leveled/">
+        <span class="nav-arrow">← </span>
+        
+          Compaction 策略 - Leveled
+        
+      </a>
+    
+    
+      <a class="nav-right" href="/2022/02/26/2022-02-16-pebble_skiplist/">
+        
+          Pebble 源码剖析 - Skiplist
+        
+        <span class="nav-arrow"> →</span>
+      </a>
+    
+  </div>
+
+    <!-- NAV END -->
+    <!-- 打赏 START -->
+    
+    <!-- 打赏 END -->
+    <!-- 二维码 START -->
+    
+    <!-- 二维码 END -->
+    
+      <!-- Gitment START -->
+      <div id="comments"></div>
+      <!-- Gitment END -->
+    
+  </article>
+  <!-- Article END -->
+  <!-- Catalog START -->
+  
+    <aside class="catalog-container">
+  <div class="toc-main">
+    <strong class="toc-title">Catalog</strong>
+    
+      <ol class="toc-nav"><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#Large-Batch"><span class="toc-nav-text">Large Batch</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E6%80%9D%E8%80%83"><span class="toc-nav-text">思考</span></a></li><li class="toc-nav-item toc-nav-level-3"><a class="toc-nav-link" href="#%E6%80%BB%E7%BB%93"><span class="toc-nav-text">总结</span></a></li></ol>
+    
+  </div>
+</aside>
+  
+  <!-- Catalog END -->
+</main>
+
+<script>
+  (function () {
+    var url = 'https://zhenyuxie.github.io/2022/02/16/2022-02-16-pebble_write_src_s/';
+    var banner = ''
+    if (banner !== '' && banner !== 'undefined' && banner !== 'null') {
+      $('#article-banner').css({
+        'background-image': 'url(' + banner + ')'
+      })
+    } else {
+      $('#article-banner').geopattern(url)
+    }
+    $('.header').removeClass('fixed-header')
+
+    // error image
+    $(".markdown-content img").on('error', function() {
+      $(this).attr('src', '/css/images/error_icon.png')
+      $(this).css({
+        'cursor': 'default'
+      })
+    })
+
+    // zoom image
+    $(".markdown-content img").on('click', function() {
+      var src = $(this).attr('src')
+      if (src !== '/css/images/error_icon.png') {
+        var imageW = $(this).width()
+        var imageH = $(this).height()
+
+        var zoom = ($(window).width() * 0.95 / imageW).toFixed(2)
+        zoom = zoom < 1 ? 1 : zoom
+        zoom = zoom > 2 ? 2 : zoom
+        var transY = (($(window).height() - imageH) / 2).toFixed(2)
+
+        $('body').append('<div class="image-view-wrap"><div class="image-view-inner"><img src="'+ src +'" /></div></div>')
+        $('.image-view-wrap').addClass('wrap-active')
+        $('.image-view-wrap img').css({
+          'width': `${imageW}`,
+          'transform': `translate3d(0, ${transY}px, 0) scale3d(${zoom}, ${zoom}, 1)`
+        })
+        $('html').css('overflow', 'hidden')
+
+        $('.image-view-wrap').on('click', function() {
+          $(this).remove()
+          $('html').attr('style', '')
+        })
+      }
+    })
+  })();
+</script>
+
+
+
+
+  <script>
+    var gitmentConfig = "zhenyuyxie";
+    if (gitmentConfig !== 'undefined') {
+      var gitment = new Gitment({
+        id: "Pebble 源码剖析-写入流程(续)",
+        owner: "zhenyuyxie",
+        repo: "zhenyuxie.github.io",
+        oauth: {
+          client_id: "1f2036d171d35790250b",
+          client_secret: "d1f9e1ae4ea60f6783f5dace256aec77eed5d99b"
+        },
+        theme: {
+          render(state, instance) {
+            const container = document.createElement('div')
+            container.lang = "en-US"
+            container.className = 'gitment-container gitment-root-container'
+            container.appendChild(instance.renderHeader(state, instance))
+            container.appendChild(instance.renderEditor(state, instance))
+            container.appendChild(instance.renderComments(state, instance))
+            container.appendChild(instance.renderFooter(state, instance))
+            return container;
+          }
+        }
+      })
+      gitment.render(document.getElementById('comments'))
+    }
+  </script>
+
+
+
+
+    <div class="scroll-top">
+  <span class="arrow-icon"></span>
+</div>
+    <footer class="app-footer">
+  <p class="copyright">
+    &copy; 2023 | Proudly powered by <a href="https://hexo.io" target="_blank">Hexo</a>
+    <br>
+    
+  </p>
+</footer>
+
+<script>
+  function async(u, c) {
+    var d = document, t = 'script',
+      o = d.createElement(t),
+      s = d.getElementsByTagName(t)[0];
+    o.src = u;
+    if (c) { o.addEventListener('load', function (e) { c(null, e); }, false); }
+    s.parentNode.insertBefore(o, s);
+  }
+</script>
+<script>
+  async("//cdnjs.cloudflare.com/ajax/libs/fastclick/1.0.6/fastclick.min.js", function(){
+    FastClick.attach(document.body);
+  })
+</script>
+
+<script>
+  var hasLine = 'true';
+  async("//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/highlight.min.js", function(){
+    $('figure pre').each(function(i, block) {
+      var figure = $(this).parents('figure');
+      if (hasLine === 'false') {
+        figure.find('.gutter').hide();
+      }
+      hljs.configure({useBR: true});
+      var lang = figure.attr('class').split(' ')[1] || 'code';
+      var codeHtml = $(this).html();
+      var codeTag = document.createElement('code');
+      codeTag.className = lang;
+      codeTag.innerHTML = codeHtml;
+      $(this).attr('class', '').empty().html(codeTag);
+      figure.attr('data-lang', lang.toUpperCase());
+      hljs.highlightBlock(block);
+    });
+  })
+</script>
+<!-- Baidu Tongji -->
+
+
+<script src="/js/script.js"></script>
+
+
+  </body>
+</html>
