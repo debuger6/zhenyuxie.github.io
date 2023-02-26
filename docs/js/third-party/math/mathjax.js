@@ -6,7 +6,9 @@ document.addEventListener('page:loaded', () => {
   if (typeof MathJax === 'undefined') {
     window.MathJax = {
       tex: {
-        inlineMath: { '[+]': [['$', '$']] },
+        //inlineMath: { '[+]': [['$', '$']] },
+        inlineMath: [['$', '$'], ['\\(', '\\)']],
+        packages: ['base', 'newcommand', 'configMacros']
         tags      : CONFIG.mathjax.tags
       },
       options: {
