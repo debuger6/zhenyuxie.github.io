@@ -1,4 +1,73 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><search><entry><title>Fastest table sort in the West - Redesigning DuckDB’s sort</title><url>/post/2023-04-16-fastest-table-sort/</url><categories><category>数据库</category><category>并行计算</category></categories><tags><tag>radix sort</tag><tag>merge sort</tag><tag>database</tag></tags><content type="html"> 本文是阅读 DuckDB 技术博客 《Fastest table sort in the West - Redesigning DuckDB’s sort》 后的翻译，同时插入了个人的理解和总结。
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><search><entry><title>DuckDB：高性能并行分组聚合</title><url>/post/2023-06-10-parallel-grouped-aggregation-in-duckdb/</url><categories><category>数据库</category><category>查询引擎</category></categories><tags><tag>duckdb</tag><tag>olap</tag></tags><content type="html"> 分组聚合对于 OLAP 数据库来说是一个核心的分析算子，常常用于对大规模数据集做分组统计。针对这样一个重要算子，DuckDB 也是做了深度地优化。本文将结合 DuckDB 相关技术资料来分析其背后的优化原理。
+Introduction Group By的作用是对按照分组字段，对数据行进行分组聚合，返回所有分组字段的值及其聚合值。举个栗子：
+SELECT l_returnflag, l_linestatus, sum(l_extendedprice), avg(l_quantity) FROM lineitem GROUP BY l_returnflag, l_linestatus; 这个栗子中对表中字段 l_returnflag 和 l_linestatus 做分组。这两个分组字段的所有组合值构成不同的分组。Group By 将数据行放到对应的分组中，从而形成不同的分组数据。投影往往会带上分组字段和其他聚合算子，达到分组聚合的统计目的。上述 SQL 语句的聚合结果如下：
+那对于 Group By 算子，DuckDB 的查询引擎是如何工作的呢？我们可以先来设想下，假设要聚合的数据表是按照分组字段排好序的，那对于这种情况就好办了。只需要顺序 SCAN 每一行，读取每行分组字段的组合值，然后上前一行的值做比较，如果一样，那么就将它们划到同一组。否则，将当前行划到新组，不断重复上述步骤直到所有行 SCAN 完毕。可以看出在数据天然按照分组字段有序的情况下，只需一次 SCAN 便能得到分组结果，时间复杂度为 $O(n)$。
+上述分组方式称为 Sorted Aggregation，那对于数据不是按照分组字段有序的情况怎么办呢？一种自然的想法就是首先对输入的表数据按照分组字段排序，然后再使用 Sorted Aggregation 做分组。整体来讲，一般排序的时间复杂度为 $O(nlogn)$，$n$ 为数据表的行数，这个开销相对而言还是比较大的。那么接下来看下还有没有更好的方式来分组。
+Hash Aggregation Hash Aggregation 其实也是一种常见的分组聚合算法。其核心思想就是利用 Hash Table 存储不同分组的聚合数据，类似于 java 中的 HashMap，key 为分组字段的组合值，value 为聚合值。我们知道，Hash Table 的查找时间复杂度为 $O(1)$，那么将 $n$ 行数据加入到 Hash Table 中，时间复杂度为 $O(n)$，这比 $O(nlogn)$ 好太多了，尤其当数据量达到数十亿条时，这种差距更明显。如下图：
+除了时间复杂度的优势外，对于排序来说，如果是内排，那么需要将涉及的所有数据都 Copy 到内存，内存开销较大。但是对于 Hash Table 来说，只需要存储所有分组信息即可，这个数据往往远低于原始表数据。
+Collision Handling 上面把 Hash Aggregation 说得那么好，是不是它就真的那么完美呢？当然不是，众所周知，Hash Table 在构建的时候常常会遇到 Hash Collision 即哈希碰撞问题。当不同的分组数据哈希到同一个桶时，这时候便出现哈希碰撞问题，那么如何解决呢？
+解决哈希碰撞问题主要有两种方式：拉链法 和 线性探测法。如果使用拉链法，那么每个哈希项其实是一个链表，哈希到同一桶的分组信息插入到同一个链表中，如下：
+如果使用线性探测法，那么也是分组值做哈希，然后映射到对应的桶，如果当前桶有值且和当前分组值相等，那么我们更新聚合值；如果当前桶没有值，那么我们将分组信息直接填充到桶中；如果当前桶有值且和当前分组值不同，那么我们顺序往下找，直到找到分组值相同或者空桶为止。如下所示：
+bucket Group Value Aggregates 0 g0 value0 1 g1 value1 2 g2 value2 3 g3 value3 4 g7 value7 5 g5 value5 6 g6 value6 7 g4 value4 理论上上述两种方式都能较好的处理哈希碰撞问题，但是从计算机硬件的角度来看，由于链表元素在内存中不连续，会带来很多随机访问，对现代硬件架构不友好。而线性探测法不用使用链表，底层的 Hash Table 一般采用数组结构，在内存中是连续的，且线性探测的过程也是顺序访问，根据局部性原理，大部分时候数据能在 CPU Cache 中命中，性能会得到极大提升。因此，DuckDB 选择线性探测处理哈希碰撞。
+如果哈希碰撞的频率太高，那么 Hash Table 的查找时间复杂度降退化为 $O(n)$，这当然是不能接受的，问题的解决办法是，扩容 Hash Table，当 Hash Table 的装载因子超过一定阈值后触发扩容。举个栗子：
+上述 Hash Table 有 4 个桶，已经有 3 个桶被占用，装载因子为 75%，将触发扩容。Hash Table 一旦扩容，那之前数据则需要 rehash 重新挪动位置。数据搬迁是个非常重的操作，开销较大，为了降低数据搬迁的开销，DuckDB 采用了一种称为 Two-Part Aggregate Hash Table 的结构，如下：
+Hash Table 分成两部分，真实的分组数据放在右边部分，称为 payload blocks；左边部分存储每个分组数据的位置信息（包含 Block 和块内偏移）。扩容时，只需要读取右边的分组数据，rehash 定位到新桶，然后修改对应桶的位置信息指向对应的分组数据。如下所示：
+将所有的分组数据都做一遍 rehash 也是一个较大的开销，特别是对于字符串类型的数据来说，这个开销更明显。怎么解决这个问题呢？一个自然的想法就是用空间换时间，将 hash 值也存起来，那么下一次用的时候直接读取即可。DuckDB 就是这样做的，如下所示：
+Two-Part Aggregate Hash Table 有没有什么明显的问题呢？进一步分析下，在线性探测的过程中，首先在左边部分获取到对应桶的地址信息，然后再去右边的 payload block 中读取数据。很明显，同一个 payload block 时内存连续的，如果在线性探测的过程中顺序读取的分组数据在同一个 payload block 中，大概率能够命中 CPU Cache。
+但是，左边 Hash Table 中的地址是无序的，也就意味着在顺序 SCAN Hash Table 时读取的 payload block 是随机的。问题的解决办法是，在左边的 Hash Table 中也带上分组数据的原始 hash 值，如下：
+在线性探测时，首先对比当前分组的 hash 值和 Hash Table 中的 hash 值，如果相等，再通过地址找到对应的分组数据并和当前分组数据做比较。如果 hash 值不等，那么便可直接跳过当前桶，继续往下探测，从而减少了随机访问次数。
+Parallel Aggregation 通过上面的设计，现在已经得到了一个高效的 Hash Table 。由于 Hash Table 不支持并发读写，不能充分发挥现代 CPU 并行处理能力。DuckDB 参考论文 Leis et al. 将原始表数据切分成多个 morsel，然后由多个线程独立处理其对应的 morsel 构建 local hash table，这一步可以达到并发。
+如果两个分组的 hash 值不同，那么这两个分组值肯定不同。根据这一点，我们可以用分组的 hash 值将各个 Hash Table 切分成多个分区，相同 hash 值的数据分到相同的分区，如下：
+然后每个线程负责 reduce 对应的分区数据，生成新的 Hash Table 。由于最终合并出来的多个 Hash Table 间的分组值各不相同，因此将各自的输出结果简单整合起来就是最终的分组结果。
+这个并行处理的方式下面这篇文章的思路类似，详细可以看这篇文章：
+Experiment DuckDB 通过下面三组数据分别对比了不同分析引擎的分组时延，如下：
+总的来看，DuckDB 在三种场景下，性能都远超其他引擎，看起来优化效果确实很牛。
+Conclusion Hash Table 在数据分析中应用十分广泛，对 Hash Table 的设计和优化做到极致是非常有必要的。DuckDB 作为一款性能出众的 OLAP 数据库，在这方面做了很多的工作，有机会拜读相关源码再继续补充分析。
+Reference https://duckdb.org/2022/03/07/aggregate-hashtable.html https://15721.courses.cs.cmu.edu/spring2016/papers/p743-leis.pdf</content></entry><entry><title>lucene DocValues之NumericDocValues</title><url>/post/2023-05-28-numbericdocvalues-layout/</url><categories><category>搜索引擎</category></categories><tags><tag>lucene</tag><tag>docvalue</tag></tags><content type="html"><![CDATA[ 其实多年前就已经研究过这块内容，但是久了不看有所遗忘，正好近期工作内容和 lucene 的 DocValues （即列存）打交道比较频繁，顺便记录分享相关内容。本章先介绍最简单的一种 DocValues – NumericDocValues，后续会分享其他类型 DocValues 的相关内容。本系列文章都是基于 lucene 版本 9.5.0 来讲解。
+文件 layout 先上图，一图胜千言。
+写文件入口： 点击进入 上图代表了整个 NumericDocValues 的文件 layout，主要包括两个文件：.dvm 和 .dvd，下面分别进行介绍。
+dvm dvm 是 dvd 的元数据，主要由三部分构成：Header、FieldMeta、Footer。
+Header 固定内容，包含文件的编码信息、版本等，见上图。
+FieldMeta 核心部分，存储每个 Field 相关的 meta 数据。每个 Field 对应一个 FieldMeta，FieldMeta 构成部分如下：
+FieldNumber Field 编号。
+DVType 字段 DocValues 类型，这里存的是一个枚举值，NumericDocValues 对应的类型值为 0。
+DocsWithFieldMeta 这个部分是数据文件 dvd 中 docsWithField 的元数据，docsWithField 在下文介绍。DocsWithFieldMeta 由下面部分构成：
+offset &amp; length
+docsWithField 在 dvd 中的偏移和长度。如果所有文档都包含该 Field，那么 offset 值为 -2，length 值为 0；如果所有文档都不包含该Field，那么 offset 值为 -1，length 值为 0.
+jumpTableEntryCount &amp; denseRankPower
+这两个变量和关键数据结构 IndexedDISI 相关，介绍 IndexedDISI 后再补充。如果所有文档都包含或者都不包含该 Field，那么这两个变量的值都为 -1.
+NumValues 该 Field 在 segment 中的数量，由于 NumericDocValues 类型的字段是单值的，因此 NumValues 和包含该字段的文档个数相同。
+EncodeType Field values 在 dvd 中存储的编码类型，分情况讨论：
+情况1：所有 values 都相同
+这种情况下，EncodeType 值为 -1。由于所有值都相同，不必将 values 存入到 dvd 中，dvm 中会存一个 min（见下文），代表所有相同的 value。
+情况2：字典编码
+当 Field values 的基数满足一定条件时，采用字典编码，在 dvd 中存储 values 的编码值。是否采用字典编码的判断条件如下：
+if (uniqueValues != null &amp;&amp; uniqueValues.size() &gt; 1 &amp;&amp; DirectWriter.unsignedBitsRequired(uniqueValues.size() - 1) &lt; DirectWriter.unsignedBitsRequired((max - min) / gcd)) 也就是说当字典编码的最大值所需的位数比差值&amp;最大公约数所需位数更少时，则使用字典编码。差值&amp;最大公约数编码可以看 这篇文章 。
+这种情况下 EncodeType 为一个复合结构，如下所示：
+length 表示字段 uniqueValue 的个数，后面跟上排序后的 uniqueValues。比如字段值为 [2, 3, 9, 6, -1, 6, 2]，那么这里存储的内容为：5 |-1|2|3|6|9.
+情况3：差值&amp;最大公约数编码
+这种情况下，字段的每个 value 将按位数为 DirectWriter.unsignedBitsRequired((max - min) / gcd)) 存储。同时为了提高压缩效率又将 Field values 的存储方式分为 SingleBlock 和 MultiBlock。如果是 SingleBlock，EncodeType 的值为 -1（和情况1相同，后面会通过 numBitsPerValue 区分）；如果是 MultiBlock，EncodeType 的值为 -16。
+EncodingMeta 差值&amp;最大公约数编码所需的元数据，编码公式为 $(v-min)/gcd$，因此元数据包含 min、gcd，当然还需要编码需要的位数 numBitsPerValue，当 EncodeType 为情况1时，numBitsPerValue 为 0。注意，这里 min 还有一个作用是在 EncodeType 为情况1时，代表所有 values 的值。
+FieldValuesIndex 表示 FieldValues 在 dvd 中的偏移 offset 和长度 length。
+JumpTableOffset FieldValues 按 Block 存储，JumpTable 可以加速 Block 的定位，JumpTableOffset 表示 JumpTable 在 dvd 中的偏移。
+Footer 存校验码，用于校验文件内容，见上图。
+dvd dvd 由三大部分组成：Header、FieldDocValuesData、Footer。本节主要讲解 FieldDocValuesData 部分，Header、Footer 忽略。
+FieldDocValuesData Field 对应的 docValues 数据，包含两部分：docsWithField 和 FieldValues。
+docsWithField 包含该 Field 的所有 docs，作用是查询时确定查询的 doc 是否存在以及定位 doc 在 segment 中的偏移。当 segment 中所有 docs 都包含或者都不包含该 Field 时，docsWithField 部分不需要存储。
+如果 docsWithField 存在，则存储它的数据结构为 IndexedDISI，这个数据结构还是比较有意思，上图画的只是其中一种情况，下一篇文章会详细介绍。
+FieldValues 该 Field 对应的所有 values。FieldValues 的存储结构得分情况讨论，对应 dvm 的 EncodeType。
+情况1：所有 values 都相同
+这种情况下，values 不用存储，即 FieldValues 不存在。
+情况2：字典编码
+这种情况下，dvd 中不用存储 value 的原始值，而是存储 value 的字典映射值，比如原始值为 [6, 9, 5, 8, 5, 6, 7]，那么字典映射表如下：
+5 --&gt; 0 6 --&gt; 1 7 --&gt; 2 8 --&gt; 3 9 --&gt; 4 那么存到 dvd 中的 values 便为 [1, 4, 0, 3, 0, 1, 2]，然后用 DirectWriter 编码存储。DirectWriter 原理请看 这篇文章 。
+情况3：差值&amp;最大公约数编码
+在讲 dvm 时，已经大体提过，这种情况会分为两种存储方式：SingleBlock 和 MultiBlock，采用这种编码，每个 value 所需的位数为 DirectWriter.unsignedBitsRequired((max - min) / gcd))，因此，当 max - min 越小，所需位数更少。当采用 MultiBlock 的空间开销能节约 10% 以上时，则使用 MultiBlock ，否则使用 SingleBlock。判断条件如下：
+// we do blocks if that appears to save 10+% storage doBlocks = minMax.spaceInBits &gt; 0 &amp;&amp; (double) blockMinMax.spaceInBits / minMax.spaceInBits &lt;= 0.9; SingleBlock 比较简单，代码见 点击进入 。另外情况 2 也是使用的 SingleBlock 存储的。
+MultiBlock 存储如下：
+每 16384 个 value 切成一个 Block，由于每个 Block 中 bitPerValue 和 min 不一定相同，因此每个 Block 都会存自己的 bitsPerValue 和 min，packedData 即压缩后的数据，size 表示 packedData 的大小。在查询时，为了加快 Block 的定位，会使用 JumpTable 存储每个 Block 的偏移。
+总结 本章讲解了 NumericDocValues 的文件 layout，至于 layout 的生成过程可以看本文提供的源码链接，关键地方笔者都加有注释。下一章将会讲解 NumericDocValues 的读取流程，同时会着重介绍数据结构 IndexedDISI。
+]]></content></entry><entry><title>Fastest table sort in the West - Redesigning DuckDB’s sort</title><url>/post/2023-04-16-fastest-table-sort/</url><categories><category>数据库</category><category>并行计算</category></categories><tags><tag>radix sort</tag><tag>merge sort</tag><tag>database</tag></tags><content type="html"> 本文是阅读 DuckDB 技术博客 《Fastest table sort in the West - Redesigning DuckDB’s sort》 后的翻译，同时插入了个人的理解和总结。
 提到排序，可能很多同学会觉得这种常规操作 so easy，各种排序算法都比较成熟，很多语言的标准库都提供了排序算法的实现，研究的意义不是很大。但是在数据库系统中，排序不是简单针对一批数值或者字符串，而是整个数据表。排序涉及复杂的比较和数据移动，而且对于内存和外存考虑点也不尽相同，要实现一个高效灵活的排序算法不是一件容易的事情。
 DuckDB 在排序上做了很多优化，性能也非常亮眼，我们来看看 DuckDB 究竟在排序上做了哪些优化。
 排序关系数据 排序是计算机科学中充分研究的问题之一，它是数据管理的一个重要方面。对排序算法的研究往往聚焦于对大型数组或键值对。但是这并没有覆盖到在数据库系统中怎么实现排序。对数据表排序远不止对大量整数数组排序那么简单！
@@ -128,8 +197,7 @@ POST /_search/scroll { &#34;scroll&#34; : &#34;1m&#34;, &#34;scroll_id&#34; : &#
 from+size 适合翻页灵活且页数不大的场景，即适合浅分页场景 search_after 适合深分页，也可以来回翻页（需要业务存储每页所需的search_after） scroll 可以做分页，但是只能顺序往后翻页，不够灵活。所以它最适合做大量数据的导出（对顺序无要求，scan完所有数据即可） 总结 本文主要介绍了 Elasticsearch 中三种分页方式的概念，并详细分析了它们各自的实现原理，最后分析了它们各自适合的使用场景。
 Reference https://www.elastic.co/guide/en/elasticsearch/reference/current/paginate-search-results.html#paginate-search-results ]]></content></entry><entry><title>关于我</title><url>/about.html</url><categories/><tags/><content type="html"> “上士闻道，勤而行之；中士闻道，若存若亡；下士闻道，大笑之。不笑不足以为道。” —《道德经》
 “知不足而奋进，望远山而前行。” —《人民日报》
-“与其焦虑，不如努力；保持热情，保持前行。很少有横空出世的幸运，更多的是不为人知的努力。行动，才不会让梦想止步于空想。当你觉得累的时候，也许，你正走在上坡路。” —《人民日报》
-debuger, 热爱技术，热爱学习，乐于分享，主要专注于数据库内核、搜索引擎领域。愿和大家一起交流学习，也请诸君不怜赐教。</content></entry><entry><title>Merge Path - A Visually Intuitive Approach to Parallel Merging 论文解读</title><url>/post/2023-02-15-merge_path/</url><categories><category>数据库</category><category>排序算法</category></categories><tags><tag>mergesort</tag><tag>database</tag></tags><content type="html"><![CDATA[ 在看DuckDB技术博客时，了解到这篇论文。文章提出的算法非常实用，在工程实践中应用效果也很好。本文主要对论文核心部分进行解读，并会根据自己的理解加以叙述，若有不当之处，欢迎纠正。
+debuger, 热爱技术，热爱学习，乐于分享，主要专注于数据库内核、搜索引擎领域。</content></entry><entry><title>Merge Path - A Visually Intuitive Approach to Parallel Merging 论文解读</title><url>/post/2023-02-15-merge_path/</url><categories><category>数据库</category><category>排序算法</category></categories><tags><tag>mergesort</tag><tag>database</tag></tags><content type="html"><![CDATA[ 在看DuckDB技术博客时，了解到这篇论文。文章提出的算法非常实用，在工程实践中应用效果也很好。本文主要对论文核心部分进行解读，并会根据自己的理解加以叙述，若有不当之处，欢迎纠正。
 介绍 在工程实践中，合并两个有序数组是非常常见的操作。最直观的实现方式就是采用一次归并排序，直接将两个有序数组合并生成一个新的有序数组。这种方式简单直观，也最容易实现，在数据集比较小的时候，性能特别好，时延几乎不计。但是在数据集较大的情况下，对于数据库这种对时延较为苛刻的系统来说，时延则不得不成为一个关注点。
 在现代CPU多核架构下，可以充分利用CPU并行计算能力，采用多线程并行合并可以成倍提升性能，降低时延。
 给一个长度为 \(n\) 的乱序数组，将其排序，考虑merge-sort算法，需要 \(\log_2n\) 轮排序，第一轮排序需要将 \(n/2\) 个 \(pairs\) 比较排序，第二轮需要将 \(n/4\) 个 \(pairs\) 排序，最后一轮将 \(2\) 个 \(pairs\) 排序生成单独的排序数组。
@@ -334,9 +402,40 @@ Backups Column families Delete files in range FIFO compaction style Forward iter
 指标聚合器 指标聚合器（Metric Aggregator）用来计算文档属性的统计信息，如最小值、最大值、平均值、总和、数量等等。指标聚合器包括：
 Avg Aggregation：计算文档属性的平均值。 Cardinality Aggregation：计算文档属性的基数（即不同值的数量）。 Max Aggregation：计算文档属性的最大值。 Min Aggregation：计算文档属性的最小值。 Sum Aggregation：计算文档属性的总和。 Value Count Aggregation：计算文档属性的值数量。 桶聚合器 桶聚合器（Bucket Aggregator）用来将文档集合分成多个桶，每个桶都符合某些过滤条件。桶聚合器包括：
 Date Histogram Aggregation：按时间段将文档分成多个桶。 Date Range Aggregation：按时间范围将文档分成多个桶。 Geo Distance Aggregation：按地理位置将文档分成多个桶。 Geo Hash Grid Aggregation：按地理位置的格子将文档分成多个桶。 Histogram Aggregation：按数字范围将文档分成多个桶。 Range Aggregation：按数字范围将文档分成多个桶。 Terms Aggregation：按文档属性将文档分成多个桶。 管道聚合器 管道聚合器（Pipeline Aggregator）用来将其他聚合器的结果作为输入，计算新的聚合结果。管道聚合器包括：
-Average Bucket Aggregation：计算每个桶中文档属性的平均值。 Bucket Script Aggregation：使用自定义脚本计算桶的聚合结果。 Bucket Selector Aggregation：根据自定义条件过滤桶。 Derivative Aggregation：计算桶聚合器结果的一阶导数。 Max Bucket Aggregation：找到某个桶聚合器结果最大的桶。 Min Bucket Aggregation：找到某个桶聚合器结果最小的桶。 Sum Bucket Aggregation：计算某个桶聚合器结果的总和。</content></entry><entry><title/><url>/io-%E7%B3%BB%E5%88%97standard-io/</url><categories/><tags/><content type="html">该系列主要对文件系统 io 进行分析总结，分为如下几章：
+Average Bucket Aggregation：计算每个桶中文档属性的平均值。 Bucket Script Aggregation：使用自定义脚本计算桶的聚合结果。 Bucket Selector Aggregation：根据自定义条件过滤桶。 Derivative Aggregation：计算桶聚合器结果的一阶导数。 Max Bucket Aggregation：找到某个桶聚合器结果最大的桶。 Min Bucket Aggregation：找到某个桶聚合器结果最小的桶。 Sum Bucket Aggregation：计算某个桶聚合器结果的总和。</content></entry><entry><title/><url>/images/database/docvalues-%E4%B9%8B-numericdocvalues-%E8%AF%BB%E5%8F%96/</url><categories/><tags/><content type="html"><![CDATA[DocValues 查找 举个例子，构造如下场景（代码：https://github.com/debuger6/lucene/blob/branch-v9.5.0/lucene/demo/src/java/org/apache/lucene/own/demo/docvalue/NumericDocValuesFieldDemo.java#L76）：
+共10个 block，block0 不存文档号，缺失。后面 9 个 block，每个 block 的第 20000 个文档号缺失，因此，每个 block 的文档数为 65535，那么 IndexedDISI 的结构大致如下：
+这里以最复杂的情况即稠密度为 dense 举例，假设查找文档号 3 * (1 &laquo; 16) + 65530 ，即查找第 3 个 block 中第 65530 个文档，那么步骤如下：
+找到 target 所属的 block3
+通过 JumpTable 找到 block3 对应的 index (第一个有效文档号的段内偏移，即 131070)
+通过 JumpTable 找到 block3 对应的 offset (dvd 文件偏移)
+定位到 block3
+读取 block3 头部，根据 block id 计算 block 第一个文档号（block_id &laquo; 16）
+读取 block 头部，获取 ranks
+定位到 target 所在的 word（target word）
+通过 ranks 加速统计 block 内当前 word 到 target word 的文档数
+根据下面代码可以判断 target 是否存在以及算出 target 的段内偏移
+long leftBits = disi.word &gt;&gt;&gt; target; // 此时 word 为 target word，最低位的 bit 表示 target 是否存在 disi.index = disi.numberOfOnes - Long.bitCount(leftBits); // 计算 target doc 的段内偏移 return (leftBits &amp; 1L) != 0; // 最低位为 1 说明 target doc 存在 上面通过 IndexDISI 找到了 target 在段内的偏移 disi.index（当然，如果文档不存在，下面的步骤就不用做了），
+]]></content></entry><entry><title/><url>/io-%E7%B3%BB%E5%88%97standard-io/</url><categories/><tags/><content type="html">该系列主要对文件系统 io 进行分析总结，分为如下几章：
 文件系统io基础 mmap 异步io: AIO, io_uring Vectored io mmap 是银弹吗？：论文解读 文件系统 io 是数据密集型系统的核心操作，对于数据库内核开发人员来说，理解 io 工作原理是特别重要的。本章主要介绍文件系统 io 基础知识，并介绍使用最频繁的 io 类型。
 xxx 块设备（Block Device）是一种按照固定大小的块进行读写的设备，通常是以扇区（Sector）为单位，每个扇区大小为 512 字节或更多。块设备允许操作系统随机地读取或写入块中的数据，因为数据存储在固定大小的块中，而且块设备一般是能够缓存数据的，这使得块设备的访问速度比字符设备更快。
 块设备通常包括机械硬盘、固态硬盘、光盘、USB存储设备等，它们通过操作系统的块设备驱动程序来与计算机进行通信。在操作系统中，文件系统一般使用块设备来存储和读取数据，因为块设备支持随机访问和缓存，使得文件系统可以快速地读取和写入数据。
-扇区（Sector）/块（Block）/页（Page） 扇区是块设备传输的最小单元，大多数硬盘的扇区大小为 512 字节。块是由多个相邻扇区组合而成，是设备驱动程序操作的单位，典型的块大小为 512, 1024, 2048 和 4096 字节。</content></entry><entry><title>站点示例</title><url>/flinks.html</url><categories/><tags/><content type="html">如想交换本站友情链接，请在评论区留下你的站点信息，格式参考如下：
+扇区（Sector）/块（Block）/页（Page） 扇区是块设备传输的最小单元，大多数硬盘的扇区大小为 512 字节。块是由多个相邻扇区组合而成，是设备驱动程序操作的单位，典型的块大小为 512, 1024, 2048 和 4096 字节。</content></entry><entry><title/><url>/lucene-%E7%AE%97%E6%B3%95%E4%B9%8B%E6%9C%80%E5%A4%A7%E5%85%AC%E7%BA%A6%E6%95%B0/</url><categories/><tags/><content type="html">最大公约数 最大公约数（英语：greatest common divisor，gcd）是指能够整除多个整数的最大正整数。而多个整数不能都为零。例如 8 和 12 的最大公约数为4。整数 $a$ , $b$ 的最大公约数记为 $gcd(a, b)$。
+解法 枚举法 这是最简单也最容易想到的方法，即将所有数的约数都罗列出来，然后再比较找到最大公约数，如 8 和 12 的约数分别为：
+8的约数：1、2、4、8
+12的约数：1、2、3、4、6、12
+最大公约数：4
+算法实现：
+质因数分解法 分别列出两数的素因数分解式，并计算共同项的乘积，如 8 和 12 的约数分别为：
+8的素因数分解式为：**2 * 2 *** 2
+12的素因数分解式为：**2 * 2 *** 3
+共同项乘积：2 * 2
+算法实现：
+短除法 两数除以其共同 素因数 ，直到两数 互素 时，所有除数的乘积即为最大公约数。
+辗转相除法 也称为欧几里得算法，相对前面几种方法，这种算法要更高效。</content></entry><entry><title/><url>/numericdocvalues%E5%86%99%E5%85%A5%E8%B7%AF%E5%BE%84/</url><categories/><tags/><content type="html">NumericDocValuesWriter addValue
+public void addValue(int docID, long value) { pending.add(value); docsWithField.add(docID); updateBytesUsed(); lastDocID = docID; } 将 docID 和 value 配对存到相应的数据结构。pending 和 docsWithField 可以简单看做是两个数组，分别存储 value 和 docID。
+flush
+Lucene90DocValuesConsumer addNumericField
+writeValues</content></entry><entry><title/><url>/paper/</url><categories/><tags/><content type="html"> http://www.vldb.org/pvldb/vol13/p3152-wei.pdf</content></entry><entry><title/><url>/wisckey-separating-keys-from-values-in-ssd-conscious-storage-%E8%AE%BA%E6%96%87%E8%A7%A3%E8%AF%BB/</url><categories/><tags/><content type="html">1. 介绍 LSM树（Log-Structured Merge Tree）是一种常见的键值存储引擎设计，主要用于解决磁盘上大规模数据的存储和访问问题。它通过将数据以日志结构（log-structured）写入顺序日志文件，然后使用内存中的索引结构（如内存表）来加速数据的查找和更新。LSM树通过定期的合并和压缩操作将内存中的数据与磁盘上的数据进行有序合并，以提高访问性能和节约存储空间。
+LSM树的写入过程包括两个主要阶段：先将数据写入内存中的数据结构（如内存表），然后以顺序写的方式将数据追加到磁盘上的日志文件中。由于数据是以追加的方式写入磁盘，LSM树能够实现高吞吐量的写入操作。而在读取过程中，LSM树首先在内存表中查找数据，如果未找到则会继续在磁盘上的日志文件中进行查找。
+然而，LSM树在某些方面也存在一些缺点。由于数据以追加方式写入日志文件，可能导致磁盘上存在大量的重复数据和过时的数据，这会影响读取性能。此外，定期的合并和压缩操作也会引入额外的开销，增加了读取和写入操作的延迟。</content></entry><entry><title>站点示例</title><url>/flinks.html</url><categories/><tags/><content type="html">如想交换本站友情链接，请在评论区留下你的站点信息，格式参考如下：
 - name: Hugo-NexT desc: Hugo NexT 官方预览网站。 avatar: https://hugo-next.eu.org/imgs/hugo_next_avatar.png link: https://hugo-next.eu.org</content></entry></search>
