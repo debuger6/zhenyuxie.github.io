@@ -1,4 +1,208 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?><search><entry><title>DuckDB：高性能并行分组聚合</title><url>/post/2023-06-10-parallel-grouped-aggregation-in-duckdb/</url><categories><category>数据库</category><category>查询引擎</category></categories><tags><tag>duckdb</tag><tag>olap</tag></tags><content type="html"> 分组聚合对于 OLAP 数据库来说是一个核心的分析算子，常常用于对大规模数据集做分组统计。针对这样一个重要算子，DuckDB 也是做了深度地优化。本文将结合 DuckDB 相关技术资料来分析其背后的优化原理。
+<?xml version="1.0" encoding="utf-8" standalone="yes"?><search><entry><title>lucene DocValues之SortedDocValues</title><url>/post/2023-09-05-sorteddocvalues-layout/</url><categories><category>lucene</category><category>搜素引擎</category></categories><tags><tag>DocValues</tag><tag>lucene</tag></tags><content type="html"><![CDATA[整体思路 为了方便理解 SortedDocValues 的存储原理，本节将通过一个简单的例子来讲解并构造一种简易的存储结构，意在理清 SortedDocValues 的设计思路。
+SortedDocValues 要存的是 docIDs 及其对应的 fieldValues，fieldValue 的类型为字节数组。举个例子，假如有如下文档：
+doc sdv_field other_field 0 Luce Based on luceneIn action 1 Lucene 2 Just 3 Lu Go 4 Lucene Search engine 以 sdv_field 为例，如果在内存里面表示 doc 和对应的 fieldValue，最直观想到的是使用 HashMap 来存储。那么内存里面的数据为：
+HashMap: {&lt;0, Luce&gt;, &lt;1, Lucene&gt;, &lt;3, Lu&gt;, &lt;4, Lucene&gt;} // key 为 docID，value 为 term 磁盘上的数据为：
+docIDs: 0 1 3 4 terms: Luce Lucene Lu Lucene offsets: 0 4 10 12 18 bitmap: 0000 0000 0001 1011 上述存储方式有什么缺陷？
+缺陷1：有 terms 重复存储，假如有大量重复的 terms，那么会导致存储（内存及磁盘）空间严重浪费 缺陷2：terms 没有规律，按写入顺序存储，压缩效果不好 好了，解决缺陷1的方式很容易想到，通常的做法就是使用字典编码，fieldValues 存储相应的编号即可；解决问题2的方式可以先将 terms 排序，然后前缀编码后再整体压缩。这样一来，在内存中的结构为：
+HashMap: {&lt;0, 0&gt;, &lt;1, 1&gt;, &lt;3, 2&gt;, &lt;4, 3&gt;} // key 为 DocID，value 为 termID idToTerm: {&lt;0, Luce&gt;, &lt;1, Lucene&gt;, &lt;2, Lu&gt;} // key 为 termID，值为 term ordMap: {&lt;0, 1&gt;, &lt;1, 2&gt;, &lt;2, 0&gt;, &lt;3, 2&gt;} // key 为 termID, 值为 ord 磁盘上的数据为：
+docIDs: 0 1 3 4 ords: 1 2 0 2 termDict: Lu Luce Lucene // 排序存储为了更好的编码效率，编码后应该是 Lu ce cene，这里为了方便理解，还是展示原始值 offsets: 0 2 6 12 这里主要关注磁盘结构，假如要查找 doc 4 对应的 term：
+首先在 docIDs 中查找 doc 4 是否存在，如果不存在则直接返回空，当然这里存在，找到其在序列中的偏移为 3 在 ords 相同的偏移处取出 ord 2 在 offsets 位置 2 和 3 处取出 offset 6 和 12 从 termDict 位置 6 开始取到 12，得到 term 为 Lucene 通过上述例子，可以形象地理解 termID 和 ord 的概念和作用。termID 是 term 的插入顺序编号，在内存中凡是使用 term 的地方都可以使用 termID 替代，从而节约内存。ord 是 term 排序后的编号，代表了 term 的字典序，在磁盘上 ord 就是 term 在 termDict 中的相对位置，从而可以更快地定位查找数据。
+另外还有个作用是，由于 termID 和 ord 都是递增生成的。因此内存中可以使用数组替换 HashMap，不仅节约内存，而且效率更高。
+内存结构 上面介绍了 termID 和 ord 的作用及构造了一种内存结构和磁盘结构，其实这就是 lucene 的实现思路，只是在实现上，lucene 做得更精细。下面来看看 SortedDocValues 在 lucene 中是如何实现的。
+来看下 SortedDocValues 的内存结构：
+class SortedDocValuesWriter { final BytesRefHash hash; // 哈希表，存 termID -&gt; term private final PackedLongValues.Builder pending; // 临时使用，存所有 termIDs private final DocsWithFieldSet docsWithField; // 存包含当前 field 的所有 docIDs private PackedLongValues finalOrds; // 存所有 termIDs，由 pending 压缩编码转变而来。这个变量名取得不严谨，有点迷惑人。docsWithField 和 finalOrds 结合起来可以看做 docIDTOTermsID map private int[] finalSortedValues; // 按 term 排序后的 termIDs. 下标是 ord，值为 termID private int[] finalOrdMap; // 存 termID-&gt;ord 的映射关系，下标是 termID，值为 ord } public void addValue(int docID, BytesRef value) { // 省略一些不重要的代码 addOneValue(value); docsWithField.add(docID); lastDocID = docID; } private void addOneValue(BytesRef value) { // value 即 term int termID = hash.add(value); if (termID &lt; 0) { // value 已经存在 termID = -termID - 1; } else { iwBytesUsed.addAndGet(2 * Integer.BYTES); } pending.add(termID); updateBytesUsed(); } 数据写进来时，先存放在前面 3 个变量中，各变量的作用见注释。flush 时，会调用 SortedDocValuesWriter.finish 方法，生成后面 3 个变量，如下：
+private void finish() { if (finalSortedValues == null) { int valueCount = hash.size(); updateBytesUsed(); assert finalOrdMap == null &amp;&amp; finalOrds == null; finalSortedValues = hash.sort(); // 返回排序后的 terms 对应的 termIDs. 下标是 ord，值为 termID finalOrds = pending.build(); finalOrdMap = new int[valueCount]; // 下标是 termID, 值是 ord for (int ord = 0; ord &lt; valueCount; ord++) { finalOrdMap[finalSortedValues[ord]] = ord; } } } 注意看 finalSortedValues 是 hash.sort 的结果，返回的值是按 terms 排序后的 termIDs 这个 int 数组，数组的下标就是 ord。因此 ord 其实代表按字典序排序后的 term 的大小序，这和我们上节介绍的概念吻合。
+数据最终会 flush 到磁盘，那么在 flush 到磁盘前，内存中的结构如何呢。如下：
+在 flush 时，内存中的数据包含上图 5 个变量。
+为了更形象地理解几个变量的含义，举个例子。如下表，有 5 行数据，每行包含字段 sdv_field、other_field。
+doc sdv_field other_field 0 Lucene In action 1 Elasticsearch Based on lucene 2 Just 3 Action Go 4 Elasticsearch Search engine 以 sdv_field 为例，内存数据变化如下：
+插入 doc 0
+hash
+term: Lucene termID 0 docsWithField
+[0] pending
+[0] 插入 doc 1
+hash
+term: Lucene Elasticsearch termID 0 1 docsWithField
+[0, 1] pending
+[0, 1] 插入 doc 2
+hash
+term: Lucene Elasticsearch termID 0 1 docsWithField
+[0, 1] pending
+[0, 1] 插入 doc 3
+hash
+term: Lucene Elasticsearch Action termID 0 1 2 docsWithField
+[0, 1, 3] pending
+[0, 1, 2] 插入 doc 4
+hash
+term: Lucene Elasticsearch Action termID 0 1 2 docsWithField
+[0, 1, 3, 4] pending
+[0, 1, 2, 1] flush
+hash
+term: Lucene Elasticsearch Action termID 0 1 2 docsWithField
+[0, 1, 3, 4] finalOrds
+[0, 1, 2, 1] finalSortedValues
+[2, 1, 0] // 按 term 排序后的 termID，相当于 ord-&gt; termID 的映射，下标是 ord，值是 termID finalOrdMap
+[2, 1, 0] // termID-&gt;ord 映射，下标是 termID，值是 ord 前 5 步是数据在 flush 前的内存存储形式，第 6 步是 flush 时 finish 后的内存存储。以上便是 SortedDocValues 的内存结构，下面会详细介绍 SortedDocValues 在文件中的组织结构。
+文件结构 文件 Layout 总览如下图：
+dvd 先介绍数据文件 dvd，所有类型的 DocValues 都一样，dvd 由三大部分组成：Header、FieldDocValuesData、Footer。本节着重介绍 FieldDocValuesData 部分，Header、Footer 忽略。
+FieldDocValuesData Field 对应的 docValues 数据，包含四部分：docsWithField、FieldValues、TermsDictData、TermsIndexData。
+docsWithField 和 FieldValues 的存储方式和 NumericDocValues 一模一样。只不过，这里 FieldValues 存的是 ords。真实的 term 值存在 TermsDictData 中的，下面会详细介绍。
+TermsDictData TermsDictData 指的是字典数据，实际上存的是排序后的 terms。 数据按 Block 划分存储，64 个 terms 为一个 Block。Block 前缀编码后通过 LZ4 压缩。下面介绍下 Block 中存的内容。
+firstTermLength Block 中第一个 term 的长度。
+firstTermValue Block 中第一个 term 的值。
+otherTermsInfo 表示除第一个 term 以外的其他 term 的信息。假如 Block（例如最后一个 Block） 中只有第一个 term，那么这块内容是不存在。来看下这块包含的内容有哪些。
+prefixLength | suffixLength-1
+prefixLength 表示当前 term 和前一个 term 的共同前缀长度，suffixLength 为后缀长度，即当前 term 的长度减去 prefixLength 。将 prefixLength 和 suffixLength 编码在一起，共用 1 个 byte，从而节省空间。那么这里为什么是 suffixLength-1 呢？
+这里引用下源码，方便解释。
+bufferedOutput.writeByte( (byte) (Math.min(prefixLength, 15) | (Math.min(15, suffixLength - 1) &lt;&lt; 4))); if (prefixLength &gt;= 15) { bufferedOutput.writeVInt(prefixLength - 15); } if (suffixLength &gt;= 16) { bufferedOutput.writeVInt(suffixLength - 16); } bufferedOutput.writeBytes(term.bytes, term.offset + prefixLength, suffixLength); 把一个 byte 分成低 4 位和高 4 位，prefixLength 存低 4 位，suffixLength 存高 4 位。
+注意，低 4 位为 15（二进制：1111）时，此时该值并不表示 prefixLength，而表示 prefixLength &gt;= 15。其实比较好理解，因为 4 位最大表示 15，因此，[0, 14] 区间的值可以正常表示；大于等于 15 时，用标识 15 表示；由于 15 已经用作标识，所以不能表示 prefixLength。
+同理，高 4 位为 15 时，也是用作标识，并不表示 suffixLength。但高 4 位存的是 suffixLength - 1 的值，因为必满足 suffixLength &gt; 0 （dict 存的是 term 的唯一值），因此，suffixLength 为区间 [1, 15] 时，可以正常表示。
+prefixLength-15
+共同前缀长度减去 15 后的值，很明显减 15 是为了节省空间。
+suffixLength-16
+同上。
+suffixValue
+除去前缀后余下的后缀值。
+BlockAdress Block 在文件中的偏移地址，是一个递增的数组，通过 DirectMonotonicWriter 编码存储。
+DirectMonotonicWriter 介绍见 链接 。
+TermsIndexData 好了，根据 docID 可以找到对应的 ord，进而找到 term。那么反过来，要根据 term 查找其对应的 ord 该怎么办呢？当然可以将 TermsDictData 的每个 Block 解压出来，然后二分遍历查找。假如要查找的 term 比较靠后，那么将要解压+二分查找很多 Block，开销非常大。
+更好的方式是什么呢，那就是对 terms 建立索引。lucene 的做法是，每 1024 个 terms 为一组，取出前一组的最后一个 term 和当前组的第一个 term，然后计算前缀值并加上当前 term 的后缀值的第一个 byte 建立稀疏索引。这么说有点抽象，举个例子：
+第一组：{&#34;abc&#34;, &#34;abcd&#34;, ... , &#34;bird&#34;} 第二组：{&#34;birger&#34;, &#34;birguz&#34;, ... , &#34;chooce&#34;} 第三组：{&#34;chorm&#34;, &#34;chorg&#34;, ... , &#34;debug&#34;} 第四组：{&#34;dog&#34;, &#34;down&#34;, ... , &#34;lucene&#34;} 取第一组最后一个 term 值 “bird”，第二组第一个值 “birger”，计算前缀为 “bir”，再加上后缀第一个 byte 结果为 “birg”
+取第二组最后一个 term 值 “chooce”，第三组第一个值 “chorm”，计算前缀为 “cho”，再加上后缀第一个 byte 结果为 “chor”
+取第三组最后一个 term 值 “debug”，第四组第一个值 “dog”，计算前缀为 “d”，再加上后缀第一个 byte 结果为 “do”
+得到最终的索引数据为 [“birg”, “chor”, “do”]
+假如查询 term 值为 “boss”，由于 “boss” 介于 “birg” 和 “chor” 之间，所以应该在第 1024 和 第 2048 区间查找 term，即第 16 到 32 个 Block 间查找。通过索引，可以极大缩小查找范围，提高查找效率。
+prefixValue 即上面说的相邻两组间后一组第一个 term 和前一组最后一个 term 的共同前缀值加后缀第一个字符。
+offset 每个 prefixValue 对应的偏移，prefixValuesOffsets 通过 DirectMonotonicWriter 编码存储。
+dvm dvm 是 dvd 的元数据，由三部分构成：Header、FieldMeta、Footer。本节着重介绍 FieldMeta 部分，Header、Footer 忽略。
+FieldMeta 第一部分数据和 NumericDocValues 的元数据一致，这里不过多介绍，主要介绍 TermsDictMeta 和 TermsIndexMeta。
+TermsDictMeta TermsDictData 的元数据，下面详细介绍。
+size ords 的个数，和 docIDs 的个数相同。
+DIRECT_MONOTONIC_BLOCK_SHIFT 创建 DirectMonotonicWriter 所需，决定了 DirectMonotonicWriter 内部 buffer 大小。
+DirectMonotonicWriterMeta DirectMonotonicWriter 编解码 TermsBlockAddress 所需元数据（注意，这里可能会有多个，上图只画了一个），来看看具体包含哪些值。
+min
+待编码数组中的最小值。
+avgInc
+数组的平均增长值。
+offset
+DirectMonotonicWriter 当前 block 的偏移相对起始位置的偏移 （DirectMonotonicWriter 内部可能会触发多次 flush，因此可能产生多个 block）。
+bitsRequired
+每个值所占 bits 数。
+maxLength 最大 term 长度。
+TermsBlockMeta maxBlockLength
+最大 Block 长度。
+offset
+TermsDictData 在 dvd 中的偏移。
+length
+TermsDictData 的长度。
+TermsBlockAddressMeta offset
+TermsBlockAddress 在 dvd 中的偏移。
+length
+TermsBlockAddress 的长度。
+TermIndexMeta TERMS_DICT_REVERSE_INDEX_SHIFT 移位数 10，代表一个 block 有 1024 个 terms。
+DirectMonotonicWriterMeta DirectMonotonicWriter 编解码 prefixValuesOffsets 所需元数据，详细参数前面已介绍过。
+prefixValuesMeta offset
+prefixValues 在 dvd 中的偏移。
+length
+prefixValues 的长度。
+prefixValuesOffsetsMeta offset
+prefixValuesOffsets 在 dvd 中的偏移。
+length
+prefixValuesOffsets 的长度。
+总结 本文介绍了 SortedDocValues 的内存结构和磁盘结构，并通过例子构建了一种简易的存储结构，帮助理解 SortedDocValues 的设计原理。可以看到 SortedDocValues 和 NumericDocValues 大部分地方是相似的，只是多了 TermsDict 和 TermsIndex 两部分，大家可以结合前面 NumericDocValues 的文章一起看，更易理解。
+]]></content></entry><entry><title>问题记录 - 谁偷走了我的内存</title><url>/post/2023-08-30-idea-debuger-tostring/</url><categories><category>java</category><category>问题记录</category></categories><tags><tag>idea intellij</tag><tag>debuger</tag></tags><content type="html"><![CDATA[背景交代 今天在 idea intellij 调试自己开发的 Elasticsearch 插件时，发现一个奇怪的问题。正常 run 的时候，结果没有一点问题，但是 debug 时，老是出现变量内容丢失的问题。刚开始以为是多线程并发问题，反复确认后确定是单线程运行，百思不得其解。
+跟踪代码发现，修改变量的地方只会在方法 A 中。但是在 debug 的路径中没有调用方法 A，问题变得更加扑朔迷离。继续查看代码，找到多处调用方法 A 的地方，发现一个可疑点，那就是 toString 方法。怀疑是不是 debug 时，idea 会自动调用 toString 显示对象内容。
+于是写了个 demo 验证自己的猜想，发现确实如此，问题解决。
+Demo 写了一个超级简单的 Demo，如下：
+public class Demo { private final List&lt;String&gt; list = new ArrayList&lt;&gt;(); public void printList() { list.forEach(System.out::println); } public void add(String item) { list.add(item); } @Override public String toString() { String result = list.stream().collect(Collectors.joining(&#34;,&#34;)); clearList(); return result; } private void clearList() { list.clear(); } public static void main(String[] args) { Demo demo = new Demo(); demo.add(&#34;hello&#34;); demo.add(&#34;world&#34;); demo.printList(); } } 正常 run 打印的结果如下：
+hello world 毫无疑问，这么 easy 的 demo，结果完全符合预期。但是，当我在 25 行打上断点，采用 debug 时，发现打印结果为空。如下图：
+可以看到在 debug 时，idea 自动调用了 toString 用来显示对象内容，而 toString 方法中调用了 clearList 清空了 list，导致在 printList 时，list 已经为空，索引打印出来的结果为空。
+这个可以在 idea 的设置中禁止自动调用 toString，规避这个问题，如下：
+把这个 Enable 勾掉就行了。
+虽然上述设置可以临时解决问题，但是我们在实际编码中还是应该避免在 toString 或 toString 调用的方法中修改变量内容。
+总结 这是个调试过程中发现的小问题，但是一开始没找到原因时，还是浪费了一些时间。为了防止以后出现类似的情况，还是值得记录一下，再遇到同样问题，可以快速查阅解决，节约时间。
+]]></content></entry><entry><title>高效内存索引：Adaptive Radix Tree</title><url>/post/2023-07-26-the-adaptive-radix-tree/</url><categories><category>数据库</category><category>索引</category></categories><tags><tag>art</tag></tags><content type="html"> 自适应基数树（Adaptive Radix Tree）是一种高效的数据结构，用于存储和检索键值对。它是一种自适应的树结构，根据实际数据的分布情况来调整内部节点的结构，以提高性能和减少存储空间的使用。
+Trie Trie（也称为字典树或前缀树）是一种特殊的树型数据结构，用于有效地存储和检索字符串集合。Trie 的主要特点是将字符串分解成单个字符，并将每个字符存储在一个节点上。从根节点开始，每个节点都代表一个字符，通过连接各个节点来表示完整的字符串。Trie 的根节点通常不存储实际字符，而是用于连接所有的子节点。如下图：
+在 trie 中查找某个 key，需要从根节点开始，根据要查找的字符串逐级向下遍历。如果在任何层级上找不到对应的子节点，则表示字符串不存在于 Trie 中。
+比如，要查找字符串 pedro, 那么需要先查找根节点是否包含字符 p，如果包含，那么检查下一层是否包含字符 e，如此这般，直到最后一个字符也包含在一个终止节点（表示从根节点到该节点为一个完整字符串），如下图蓝色路径则为字符串 pedro 的查找路径。
+Trie 的主要优点是：
+高效地插入和查找字符串，时间复杂度为 $O(k)$，其中 $k$ 是字符串的长度。 可以高效地进行前缀匹配，用于实现自动补全、单词搜索等。 实际上，Trie 也可以用来存储数值类型的数据。对于 uint64 的数值，最大为 18,446,744,073,709,551,615。如果按字符来存储，那么存储 uint64 的最大值需要 17 层，显然这种存储方式并不高效，那么如果我们按 bits 存储呢？uint64 有 64-bits，每个节点的 key 用 8-bits 表示，那么只需要 8 层即可。
+我们以每个节点存 2-bits 为例，假设 Trie 中存储了 7, 10, 12，从下图可以看到这三个数的二进制表示。每个节点的值由 0 和 1 组成，同时每个节点包含指向所有子节点的指针，指针为 * 代表该子节点存在，指针为 Ø 代表改子节点不存在。最终由叶子节点指向实际的数据。
+然而，我们可以很容易看出，上述 Trie 有两个缺点：
+有的节点只有一个子节点，既增加了层级也浪费了空间 有的节点存在大量空指针，浪费空间。 为了解决上述问题，一般使用压缩技术来达到节约空间的目的。
+Radix tree Radix tree（基数树，也称为压缩前缀树或 Patricia 树）是一种特殊的多叉树数据结构，用于高效地存储、检索和查找字符串键（key）和与之相关联的值（value）。它被广泛用于实现诸如IP路由表、字典、自动补全和编译器等应用。
+Radix tree 的思想是通过在垂直方向折叠只含有一个子节点的节点来达到压缩的效果，这个过程在论文里称为路径压缩（Path Compression）。如下：
+压缩后的节点需要将路径的前缀存储下来，如下：
+前两层的节点都只有一个子节点，将它们折叠到第三层的节点，保存折叠路径的前缀 0000，形成一个新节点，如下所示：
+查找时，遇到折叠过的节点，要比较前缀是否匹配。经过垂直压缩，减少了节点树和层级树，节约了大量空间，但是依然没有解决空指针浪费的问题。
+Adaptive Radix Tree ART (自适应基数树) 的关键就在于 Adaptive 这个词，为了充分理解 ART 的设计精髓，我们还是以一个例子入手。我们以一个节点存 8-bits 为例，如下：
+可以看到，节点将存 256（$2^8$）个指针，指针数组的下标代表子节点的值。整个节点占用的空间为 2048（256 * 8）bytes，然而实际有效的指针只有 3 个，也就意味着有 2024 （2048 - 24）bytes 浪费掉了。
+为了解决上述空指针浪费的问题，ART 便应运而生。ART 的思路是提供 4 种不同类型的节点，并根据当前节点有效指针数量选取合适的节点类型。4 种节点类型如下：
+Node4，由一个长度为 4 的 byte 数组和长度为 4 的指针数组构成，最多存储 4 个不同的 key 及其对应的子节点指针。一共占用 40（4*1 + 4*8）bytes。有效指针个数小于等于 4 时，使用这种类型的节点存储如下：
+查找时，需要遍历 byte 数组，判断当前要查找的 key 是否在数组中。由于数据长度小，遍历的开销也就很低。
+Node16，由一个长度为 16 的 byte 数组和长度为 16 的指针数组构成，最多存储 16 个不同的 key 及其对应的子节点指针。一共占用 144（16*1 + 16*8）bytes。有效指针个数在 5~16 时，使用这种类型的节点存储，如下：
+节点查找流程和 Node4 相同。
+Node48，由一个长度为 256 的 byte 数组和长度为 48 的指针数组构成，最多存储 48 个不同的 key 及其对应的子节点指针。一共占用 640（256*1 + 48*8）bytes。有效指针个数在 17~48 时，使用这种类型的节点存储，如下：
+由于 byte 数组和指针数组长度不对齐，需要通过一定的方式将它们映射起来：byte 数组的下标表示 key，值表示 key 对应的子节点指针在指针数组的位置。
+那么为什么 Node48 不和 Node4、Node16 保持一样的设计呢？论文中给出了解释：随着节点中元素个数的增加，遍历查找 key 数组的开销越来越大，元素个数超过 16 后，存储方式便按 Node48 存储。
+我们来看下 Node48 的查找过程，查找 Node48 时，我们可以跟据查找的 key 快速定位到其在节点中的位置（key的值便是下标值），获取其对应的子节点指针。时间复杂多为 O(1)，这是典型的空间换时间做法。
+Node256，由长度为 256 的指针数组构成，一共占用 2048（256 * 8）bytes。有效指针个数在 49~256 时，使用这种类型的节点存储，如下：
+指针数组的下标代表 key，值代表其对应的子节点指针。查找是，可以快速得到子节点指针，时间复杂度为 O(1)。
+因此对于前面的例子，则选取 Node4 存储，如下：
+节点有一个空指针，浪费 8 bytes，比起用 Node256 来存储浪费 2024 bytes，已经减少了大量空间浪费。
+Comparison 数据库常用的索引结构有 Hash 索引、B+ Tree 等，那么 ART 对比这些索引有什么优势呢？
+ART 通过路径压缩、自适应节点分配极大的减少了空间浪费。相比 B+ Tree，其内部节点更小，占用空间更少，更适合 cpu cache，在纯内存场景，ART 优势明显。同时 ART 也拥有极佳的点查性能（最坏情况为 O(k)），也更适合前缀匹配查询。
+B+ Tree 的优势在于树高度小且平衡，更适合作为传统数据库的磁盘索引。B+ Tree 能提供稳定高效的查询性能，且范围查询性能也很突出。因此作为磁盘索引，B+ Tree 更有优势。
+Hash 索引常常能提供高效的点查性能，但是范围查询、前缀查询性能极差（全扫）。因此，Hash 索引常常用于加速点查，使用比较局限。
+Conclusions 通过本文的介绍，我们大致了解了 Adaptive Radix Tree 的原理和优势。在实际技术选型过程中，应该充分结合系统应用场景，根据各自的优势，选取相对合适的技术才能充分发挥系统的能力。
+Reference https://en.wikipedia.org/wiki/Radix_tree https://db.in.tum.de/~leis/papers/ART.pdf https://duckdb.org/2022/07/27/art-storage.html</content></entry><entry><title>WiscKey: Separating Keys from Values in SSD-Conscious Storage 论文解读</title><url>/post/2023-06-22-wisckey/</url><categories><category>数据库</category><category>存储引擎</category></categories><tags><tag>kv</tag><tag>WiscKey</tag></tags><content type="html">1 介绍 LSM-tree（Log-Structured Merge Tree）是一种常见的数据结构，其具备高效的写入性能和较好的查询能力，很多键值数据库选择这种结构来实现存储引擎，比如 RocksDB、LevelDB、HBase 等。
+传统的机械硬盘 （HDDs） 随机 IO 速度比顺序 IO 慢了两个数量级以上，LSM-tree 先将数据缓存在内存中，然后再一把刷入磁盘形成 SST，天然地将随机 IO 转换成顺序 IO，恰好规避了 HDDs 的最大弊端。将 LSM-tree 应用在 HDDs 上能取得很好的效果。
+为了平衡查询性能， LSM-tree 会在后台将磁盘上的 SST 排序合并在一起，一份数据在其生命周期内可能会被读取写入多次，会造成 IO 放大。随着现代存储设备的发展，固态硬盘（SSDs）使用越来越广泛，然而，SSDs 和 HDDs 本质上有很大的区别，主要表现为如下几点：
+相比于 HDDs，SSDs 的随机 IO 性能和顺序 IO 性能的差异并没有那么大，LSM Tree 用磁盘带宽换取顺序写的收益表现得没那么明显 SDD 内部具备并行访问能力，构建在 SSD 上的 LSM Tree 在设计上应该充分考虑并行性 大量的写入操作对 SSD 会造成磨损，因此 LSM Tree 的写入放大会减少设备的生命周期 基于上述背景，论文提出了一种称为 WiscKey 的键值存储，其实现了一种专门针对 SSD 的 LSM-tree。WiscKey 的核心思想是将 keys 和 values 分离，keys 存储到 LSM-tree，values 单独存储在日志文件中。
+这种简单的技术有效地降低了写放大，由于 values 没有存储在 LSM-tree 中，那么 LSM-tree 的大小自然就减小了，也就意味着可以将更多 LSM-tree 的数据缓存在内存中，进一步提升查询性能。
+另外，kv 分离也会带来一些弊端：
+kv 分离后，scan 的性能势必会受到影响，因为 values 并不是按照 keys 有序排列的，因此会带来很多的随机 IO WiscKey 需要通过 gc 来清理一些无用的 values，gc 会消耗系统资源，影响前台性能 Kv 分离会来一致性问题 后面章节会介绍 WiscKey 是如何解决上述问题的。
+2 Background and Motivation LSM-tree 和 LevelDB 就不过多介绍了，整体架构如下：
+LSM-tree 主要问题就是读写放大，比如 LevelDB，我们来分析下 LevelDB 的读写放大问题。由于 LevelDB 的分层设计，$L_i$ 层的大小是 $L_{i-1}$ 的 10 倍，compaction 时，在最坏情况下，需要将 $L_{i-1}$ 层的 1 个文件和 $L_i$ 层的 10 文件做合并排序，然后再写入到 $L_i$ 层，所以相邻两层间的 compaction 写放大最高可以达到 10 倍。
+对于大量数据集的写入，会不断新生新的文件，大部分文件经过 compaction，从 $L_0$ 迁移到 $L_6$ 写入放大超过 50 倍（$L_1$ 到 $L_6$ 每层写入放大 10 倍）。
+对于读操作，最坏情况下，需要查找所有层的文件，$L_0$ 层查找 8 个文件（$L_0$ 层文件数据有重叠），其他 6 层各查找一个文件。而每个文件需要读取 16KB index block，4KB bloom filter block，4KB data block，一共 24KB，14 个文件一共 336KB。假设一个 key-value 键值对 1KB，那么读放大为 336。
+总体来说，数据量越大，数据就容易往底层迁移，也就会造成更高的读写放大。如下：
+3 WiscKey WiscKey 的四个重要思想：
+Key 和 Value 分开存储，keys 依然存放在 LSM-tree，values 存放在 log 文件 由于 values 未按照 keys 的顺序存储，在范围查询时，会导致随机读，WiscKey 使用 SSD 的特性并行读取数据 WiscKey 使用崩溃一致性（crash-consistency）和垃圾回收器（garbage- collection）来有效管理 log WiscKey 在保证一致性的前提下，去除 WAL 来优化性能 3.1 Design Goals WiscKey 想达成的主要目标如下：
+低写放大，写放大消耗大量的写带宽，降低 SSD 的使用寿命，降低写放大即可改善系统负载，还能提升 SSD 的使用寿命。因此，降低写放大至关重要。
+低读放大，读放大会导致两个问题，第一，每次查询会到来多次读取操作，降低查询吞吐；第二，读放大会造成大量数据加载到内存，降低缓存效率，WiscKey 的目标是降低读放大，加快查询速度。
+针对 SSD 优化，WiscKey 专门针对 SSD 的特性来做优化。特别是通过高效的顺序写和并发随机读来充分利用设备的带宽。
+特性丰富的 API
+Realistic key-value sizes，这里论文要表达的意思应该是 key 的长度有大有小，但是在实际情况下，key 的大小常常是比较小的。WiscKey 旨在针对大部分情况下的 key 大小提供高效的性能。
+3.2 Key-Value Separation LSM-tree 最主要的性能开销是 compaction，在 compaction 过程中，多个文件会被读到内存排序然后写回磁盘，这一系列的操作会影响到前台的性能。
+WiscKey 将 keys 和 values 分离，compaction 只将 keys 读取到内存排序。因为 key 往往远小于 value，所以参与排序的数据量大大减少。在大 value 场景下，key-value 分离能够显著地降低写入放大。
+假设 key 的大小为 16B，value 的大小为 1KB，key 在 LSM-tree 中的写放大为 10，value 的写放大为 1。那么 key-value 整体的写放大为 $(10 \times16+1024)/(16+1024)=1.14$。可以看到，通过 key-value 分离，写放大被有效的稀释掉了。
+WiscKey 的架构如下：
+key 和 value 的地址存在 LSM-tree 中，value 存在日志文件 vlog 中。当插入一个 key-value 键值对时，先将 value 追加到 vlog，然后再将 key 和 value 的地址插入 LSM-tree。
+删除也很简单，只需要将 key 从 LSM-tree 中删除（标删）即可。vlog 中所有有效值在 LSM-tree 中都有对应的 key，无效值将会被垃圾回收器清理掉。
+WiscKey 在查询时，首先从 LSM-tree 中定位 key，进而得到 value 在 vlog 中的地址；然后，根据地址到 vlog 中获取 value。从流程上来分析，WiscKey 的查询性能应该弱于 LevelDB，因为多了一次查找 value 的 IO。
+但是宏观来看，对于相同数据量， 一方面，WiscKey 的 LSM-tree 比 LevelDB 的更小，也就意味着查找 key 时，需要查找的层数更少；另一方面，LSM-tree 更少，能够缓存的 key 也就更多，因此，命中缓存的概率也就越大。所以，WiscKey 的查询性能往往比 LevelDB 更好。
+WiscKey 的思想看起来很简单，但是其中存在很多挑战。
+3.3 Challenges 3.3.1 Parallel Range Query 在 LevelDB 中，由于 key-value 有序存放在一起，范围查询时，可以顺序读取 SST。然而，在 WiscKey 中，key-value 分离存储，范围查询时，需要随机读取 vlog 中的 value，这是很低效的。
+WiscKey 利用 SSD 并行 IO 特性，多线程随机读也能达到顺序读的效果，如下：
+在范围查询时，在 LSM-tree 中预取多个 key-address，然后将 addresses 插入到队列中。多个线程消费队列，得到地址并在 vlog 中并行读取地址对应的 value，从而提升范围查询性能。
+3.3.2 Garbage Collection 在标准的 LSM-tree 中，compaction 可以清理掉被删除或者更新前的 key-value。但是在 WiscKey 中 compaction 只能清理掉 keys，values 存放在 vlog 中无法被清理，因此，需要一个特定的垃圾回收器清理 vlog。
+一种直观的想法是，scan LSM-tree 获取所有有效的 value 地址，vlog 中的 value 在 LSM-tree 中没有对应有效地址的被视为无效，然后被清理。然而，这种方法太重，只适合作为线下垃圾回收器。
+WiscKey 旨在构建一个轻量的在线垃圾回收器，为了实现这一目的，WiscKey 对 layout 做了微小的改变：在 vlog 中将 key 和 value 一起存储，如下：
+数据从 head 开始往后追加，垃圾回收器从 tail 开始清理，vlog 中有效数据包含在 head 和 tail 之间，查询是只会查找这个范围内的数据。
+垃圾回收时，从 tail 开始读取一个 chunk 的 key-value，然后根据 key 在 LSM-tree 查找检查是否有效，如果有效则将对应的 key-value 追加到 head 后面。当 chunk 中的数据都检查完毕后，清理释放掉整个 chunk，同时更新 tail 指针。
+为了防止在 gc 过程中系统崩溃丢失数据，WiscKey 将会执行如下步骤，新的有效值追加到 vlog 后，将调用 fsync() 保证数据落盘。然后将 value 对应的地址和 tail 以同步插入的方式添加到 LSM-tree。最后，释放掉 gc 后的空间。
+3.3.3 Crash Consistency 原生的 LSM-tree key-value 在一起，容易保证数据插入和恢复的一致性，WiscKey 中 key-value 的插入分成了两步，一致性保证更复杂。那么如何保证崩溃一致性呢？总结来说，分成下面几种情况：
+value 部分写入后崩溃 value 写入成功，key-offset 还没有写入到 LSM-tree 中，系统崩溃 Key-offset 写入 LSM-tree 的过程中崩溃，地址写入不全 第一种情况，value 不全，能够很容易检查出不合法，随后会被 gc 掉；第二种情况，value 虽然写入成功，但是在 gc 的过程中在 LSM-tree 中找不到对应的 key，也会被 gc 掉；第三种情况，地址写入不全，在 gc 时，会检查地址是否在 head 和 tail 范围区间，如果合法会继续比对地址对应的 key 是否匹配，如果不匹配则认为 key 无效，然后从 LSM-tree 中删除掉。
+3.4 Optimizations 3.4.1 Value-Log Write Buffer 每次写 vlog 都会调用一次 write() 系统调用，大量的小 io 不利于系统吞吐，解决的方式就是增加一个 vlog 的写缓存，当缓存达到一定阈值时在一把刷入磁盘。查询时，先读缓存，然后再读磁盘。当然，这种方式在系统崩溃时，有丢数据的风险。
+3.4.2 Optimizing the LSM-tree Log 在 LevelDB 中会使用 WAL 保证系统在崩溃后能够恢复最近写入的数据。WiscKey 中 vlog 天然有 WAL 的功能，因此 WAL 文件可以省略掉。当 LSM-tree 中的 keys 落盘前系统崩溃，可以从 vlog 中读取数据恢复 keys。
+最基础的方式是 scan 整个 vlog 重建 LSM-tree，这种方法太重，不可取。因为我们只需要从最近落盘时点开始恢复，WiscKey 会周期性的将 head 记录到 LSM-tree 中，系统启动后，只需要读取 LSM-tree 获取 head，然后恢复 head 到 vlog 末尾间的数据即可。
+4 Benchmark Load Performance
+Query Performance
+Garbage Collection
+Space Amplification
+YCSB Benchmarks
+Conclusions WiscKey 的思想比较简单，但是其中有很多细节需要考虑，要实现一款高效的 WiscKey 存储引擎，还是存在很多挑战。目前有几款开源 key-value 存储引擎实现了 WiscKey，后面再深入研究。</content></entry><entry><title>DuckDB：高性能并行分组聚合</title><url>/post/2023-06-10-parallel-grouped-aggregation-in-duckdb/</url><categories><category>数据库</category><category>查询引擎</category></categories><tags><tag>duckdb</tag><tag>olap</tag></tags><content type="html"> 分组聚合对于 OLAP 数据库来说是一个核心的分析算子，常常用于对大规模数据集做分组统计。针对这样一个重要算子，DuckDB 也是做了深度地优化。本文将结合 DuckDB 相关技术资料来分析其背后的优化原理。
 Introduction Group By的作用是对按照分组字段，对数据行进行分组聚合，返回所有分组字段的值及其聚合值。举个栗子：
 SELECT l_returnflag, l_linestatus, sum(l_extendedprice), avg(l_quantity) FROM lineitem GROUP BY l_returnflag, l_linestatus; 这个栗子中对表中字段 l_returnflag 和 l_linestatus 做分组。这两个分组字段的所有组合值构成不同的分组。Group By 将数据行放到对应的分组中，从而形成不同的分组数据。投影往往会带上分组字段和其他聚合算子，达到分组聚合的统计目的。上述 SQL 语句的聚合结果如下：
 那对于 Group By 算子，DuckDB 的查询引擎是如何工作的呢？我们可以先来设想下，假设要聚合的数据表是按照分组字段排好序的，那对于这种情况就好办了。只需要顺序 SCAN 每一行，读取每行分组字段的组合值，然后上前一行的值做比较，如果一样，那么就将它们划到同一组。否则，将当前行划到新组，不断重复上述步骤直到所有行 SCAN 完毕。可以看出在数据天然按照分组字段有序的情况下，只需一次 SCAN 便能得到分组结果，时间复杂度为 $O(n)$。
@@ -435,7 +639,5 @@ xxx 块设备（Block Device）是一种按照固定大小的块进行读写的�
 public void addValue(int docID, long value) { pending.add(value); docsWithField.add(docID); updateBytesUsed(); lastDocID = docID; } 将 docID 和 value 配对存到相应的数据结构。pending 和 docsWithField 可以简单看做是两个数组，分别存储 value 和 docID。
 flush
 Lucene90DocValuesConsumer addNumericField
-writeValues</content></entry><entry><title/><url>/paper/</url><categories/><tags/><content type="html"> http://www.vldb.org/pvldb/vol13/p3152-wei.pdf</content></entry><entry><title/><url>/wisckey-separating-keys-from-values-in-ssd-conscious-storage-%E8%AE%BA%E6%96%87%E8%A7%A3%E8%AF%BB/</url><categories/><tags/><content type="html">1. 介绍 LSM树（Log-Structured Merge Tree）是一种常见的键值存储引擎设计，主要用于解决磁盘上大规模数据的存储和访问问题。它通过将数据以日志结构（log-structured）写入顺序日志文件，然后使用内存中的索引结构（如内存表）来加速数据的查找和更新。LSM树通过定期的合并和压缩操作将内存中的数据与磁盘上的数据进行有序合并，以提高访问性能和节约存储空间。
-LSM树的写入过程包括两个主要阶段：先将数据写入内存中的数据结构（如内存表），然后以顺序写的方式将数据追加到磁盘上的日志文件中。由于数据是以追加的方式写入磁盘，LSM树能够实现高吞吐量的写入操作。而在读取过程中，LSM树首先在内存表中查找数据，如果未找到则会继续在磁盘上的日志文件中进行查找。
-然而，LSM树在某些方面也存在一些缺点。由于数据以追加方式写入日志文件，可能导致磁盘上存在大量的重复数据和过时的数据，这会影响读取性能。此外，定期的合并和压缩操作也会引入额外的开销，增加了读取和写入操作的延迟。</content></entry><entry><title>站点示例</title><url>/flinks.html</url><categories/><tags/><content type="html">如想交换本站友情链接，请在评论区留下你的站点信息，格式参考如下：
+writeValues</content></entry><entry><title/><url>/paper/</url><categories/><tags/><content type="html"> http://www.vldb.org/pvldb/vol13/p3152-wei.pdf</content></entry><entry><title>站点示例</title><url>/flinks.html</url><categories/><tags/><content type="html">如想交换本站友情链接，请在评论区留下你的站点信息，格式参考如下：
 - name: Hugo-NexT desc: Hugo NexT 官方预览网站。 avatar: https://hugo-next.eu.org/imgs/hugo_next_avatar.png link: https://hugo-next.eu.org</content></entry></search>
